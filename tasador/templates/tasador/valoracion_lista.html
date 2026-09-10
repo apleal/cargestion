@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load tasador_extras %}
 {% block title %}Valoraciones · Tasador{% endblock %}
 {% block content %}
 <h1>Valoraciones</h1>
@@ -23,10 +23,10 @@
         <td>{% if v.sesion_subasta %}{{ v.sesion_subasta }}{% else %}—{% endif %}</td>
         <td class="num">{{ v.lote_id }}</td>
         <td>{{ v.estado.nombre }}</td>
-        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
-        <td class="num">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
-        <td class="num">{{ v.r_beneficio_neto|floatformat:0|intcomma }} €</td>
-        <td class="num">{{ v.r_rentabilidad_coste|floatformat:3 }}</td>
+        <td class="num">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td class="num">{{ v.r_beneficio_neto|eur }}</td>
+        <td class="num">{{ v.r_rentabilidad_coste|pct }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="8" class="mono">Sin valoraciones.</td></tr>

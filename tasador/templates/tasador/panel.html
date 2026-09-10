@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load tasador_extras %}
 {% block title %}Panel · Tasador{% endblock %}
 {% block content %}
 <h1>Panel</h1>
@@ -50,9 +50,9 @@
         <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
         <td class="num">{{ v.fecha_valoracion|date:"d/m/y" }}</td>
         <td>{{ v.estado.nombre }}</td>
-        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
-        <td class="num">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
-        <td class="num">{{ v.r_rentabilidad_coste|floatformat:3 }}</td>
+        <td class="num">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td class="num">{{ v.r_rentabilidad_coste|pct }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="6" class="mono">Aún no hay valoraciones. <a href="{% url 'valoracion_nueva' %}">Crea la primera</a>.</td></tr>

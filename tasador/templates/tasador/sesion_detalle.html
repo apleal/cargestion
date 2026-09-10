@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load tasador_extras %}
 {% block title %}{{ sesion }} · Tasador{% endblock %}
 {% block content %}
 <div class="sesion-head">
@@ -51,10 +51,10 @@
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
           </td>
           <td class="mono">{{ v.vehiculo.matricula }}</td>
-          <td class="num mono">{{ v.kilometros|default_if_none:0|intcomma }}</td>
-          <td class="num destacado puja-15">{% if f.puja_15 %}{{ f.puja_15|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
-          <td class="num destacado puja-12">{% if f.puja_12 %}{{ f.puja_12|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
-          <td class="num destacado puja-10">{% if f.puja_10 %}{{ f.puja_10|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+          <td class="num mono">{{ v.kilometros|miles }}</td>
+          <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>
+          <td class="num destacado puja-12">{{ f.puja_12|eur }}</td>
+          <td class="num destacado puja-10">{{ f.puja_10|eur }}</td>
           <td class="num">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
@@ -70,7 +70,7 @@
               <option value="">— manual</option>
             </select>
           </td>
-          <td class="num mono transporte">{{ f.transporte|floatformat:0 }} €</td>
+          <td class="num mono transporte">{{ f.transporte|eur }}</td>
           <td>
             <select class="celda" data-campo="estado_carroceria_id" data-val="{{ v.pk }}">
               {% for c in carrocerias %}
@@ -82,7 +82,7 @@
             <input class="celda mini piezas" data-campo="piezas_pintura" data-val="{{ v.pk }}"
                    value="{{ v.piezas_pintura }}" inputmode="numeric">
           </td>
-          <td class="num beneficio">{{ f.beneficio|floatformat:0|intcomma }} €</td>
+          <td class="num beneficio">{{ f.beneficio|eur }}</td>
           <td class="num rent">{{ f.rentabilidad }}</td>
           <td><a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a></td>
         </tr>
@@ -106,9 +106,9 @@
 
   function nf(x){
     if(x === null || x === undefined || x === '') return '—';
-    var n = parseFloat(x);
+    var n = Math.round(parseFloat(x));
     if(isNaN(n)) return '—';
-    return new Intl.NumberFormat('es-ES',{maximumFractionDigits:0}).format(Math.round(n)) + ' €';
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
   }
 
   document.querySelectorAll('.celda').forEach(function(el){
@@ -130,7 +130,7 @@
           tr.querySelector('.rent').textContent = j.rentabilidad;
           if(j.transporte !== undefined){
             var tp = tr.querySelector('.transporte');
-            if(tp) tp.textContent = Math.round(parseFloat(j.transporte)) + ' €';
+            if(tp) tp.textContent = nf(j.transporte);
           }
           if(j.piezas_pintura !== undefined){
             var pz = tr.querySelector('.piezas');

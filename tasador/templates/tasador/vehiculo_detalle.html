@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load tasador_extras %}
 {% block title %}{{ vehiculo }} · Tasador{% endblock %}
 {% block content %}
 <h1>{{ vehiculo }}</h1>
 <p class="mono">{{ vehiculo.marca }} {{ vehiculo.modelo }} {{ vehiculo.version }}
   · {{ vehiculo.potencia_cv }} CV · {{ vehiculo.combustible }} · {{ vehiculo.anio }}
-  {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|intcomma }} km{% endif %}</p>
+  {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|miles }} km{% endif %}</p>
 
 <div class="card">
   <h2>Valoraciones ({{ valoraciones|length }})</h2>
@@ -16,9 +16,9 @@
       <tr>
         <td class="num"><a href="{% url 'valoracion_editar' v.pk %}">{{ v.fecha_valoracion|date:"d/m/Y" }}</a></td>
         <td>{% if v.sesion_subasta %}{{ v.sesion_subasta }}{% else %}—{% endif %}</td>
-        <td class="num">{{ v.kilometros|intcomma }}</td>
-        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
-        <td class="num">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+        <td class="num">{{ v.kilometros|miles }}</td>
+        <td class="num">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
         <td>{{ v.estado.nombre }}</td>
       </tr>
       {% endfor %}

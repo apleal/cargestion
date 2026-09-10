@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load tasador_extras %}
 {% block title %}Sala de pujas · {{ sesion }}{% endblock %}
 {% block content %}
 <div class="sesion-head">
@@ -27,10 +27,10 @@
       <tr id="lote-{{ v.orden_lote|default:v.lote_id }}">
         <td class="num big">{{ v.orden_lote|default:v.lote_id }}</td>
         <td class="coche"><b>{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</b> <span class="ver">{{ v.vehiculo.version }}</span><br>
-          <span class="mono">{{ v.vehiculo.matricula }} · {{ v.kilometros|intcomma }} km</span></td>
-        <td class="num mono">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
-        <td class="num destacado big">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
-        <td class="num mono">{{ v.puja_12 }}</td>
+          <span class="mono">{{ v.vehiculo.matricula }} · {{ v.kilometros|miles }} km</span></td>
+        <td class="num mono">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num destacado big">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td class="num mono">{{ v.puja_12|eur }}</td>
         <td>{{ v.estado.nombre }}</td>
       </tr>
       {% empty %}

@@ -112,7 +112,8 @@ LANGUAGE_CODE = "es"
 TIME_ZONE = "Europe/Madrid"
 USE_I18N = True
 USE_TZ = True
-USE_THOUSAND_SEPARATOR = True  # 39.558, 13.648 €
+# El formato de miles se hace con los filtros de tasador_extras (miles/eur),
+# no con la localización de Django (que en es- usa espacio fino).
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

@@ -24,15 +24,22 @@ def _fmt_escenarios(escs) -> list[dict]:
         d = e.desglose
         salida.append(
             {
-                "objetivo": f"{e.objetivo:.0%}",
+                "objetivo": _pct_es(e.objetivo, 0),
                 "puja_maxima": str(e.puja_maxima) if e.puja_maxima is not None else None,
                 "beneficio_neto": str(d.beneficio_neto) if d else None,
-                "rentabilidad_coste": f"{d.rentabilidad_coste:.1%}" if d else None,
-                "margen_venta": f"{d.margen_venta:.1%}" if d else None,
+                "rentabilidad_coste": _pct_es(d.rentabilidad_coste) if d else None,
+                "margen_venta": _pct_es(d.margen_venta) if d else None,
                 "comision": str(d.comision_coste) if d else None,
             }
         )
     return salida
+
+
+def _pct_es(x, dec=1) -> str:
+    try:
+        return f"{float(x) * 100:.{dec}f}".replace(".", ",") + " %"
+    except (TypeError, ValueError):
+        return "—"
 
 
 def _fila_valoracion(v: models.Valoracion) -> dict:
@@ -49,7 +56,7 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "puja_12": puja("0.12"),
         "puja_10": puja("0.10"),
         "beneficio": str(v.r_beneficio_neto),
-        "rentabilidad": f"{v.r_rentabilidad_coste:.1%}",
+        "rentabilidad": _pct_es(v.r_rentabilidad_coste),
         "transporte": str(v.coste_transporte),
         "zona_origen": v.zona_origen,
     }
@@ -221,7 +228,7 @@ def sesion_sala(request, pk):
     )
     for v in lotes:
         f = _fila_valoracion(v)
-        v.puja_12 = f"{float(f['puja_12']):,.0f} €".replace(",", ".") if f["puja_12"] else "—"
+        v.puja_12 = f["puja_12"]  # el template lo formatea con |eur
     return render(
         request, "tasador/sesion_sala.html", {"sesion": sesion, "lotes": lotes}
     )
@@ -365,8 +372,8 @@ def calcular_api(request):
                 "iva_rebu": str(d.iva_rebu),
                 "margen_neto": str(d.margen_neto),
                 "beneficio_neto": str(d.beneficio_neto),
-                "rentabilidad_coste": f"{d.rentabilidad_coste:.1%}",
-                "margen_venta": f"{d.margen_venta:.1%}",
+                "rentabilidad_coste": _pct_es(d.rentabilidad_coste),
+                "margen_venta": _pct_es(d.margen_venta),
                 "tramo": (
                     f"{d.tramo.desde}–{d.tramo.hasta or '∞'}" if d.tramo else "cuota plana"
                 ),
