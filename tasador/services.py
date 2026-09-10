@@ -83,6 +83,12 @@ def construir_config(
     """Crea el ``ConfigProveedor`` del motor a partir de un tipo de subasta."""
     proveedor = tipo_subasta.proveedor
 
+    if tipo_subasta.modo == "iva_anuncio":
+        return ConfigProveedor(
+            modo="iva_anuncio",
+            conceptos_fijos=_conceptos_fijos_vigentes(proveedor, fecha),
+        ), None
+
     if tipo_subasta.cuota_plana is not None:
         return ConfigProveedor(cuota_plana=tipo_subasta.cuota_plana), None
 
@@ -138,8 +144,15 @@ def gastos_preparacion(v: Valoracion) -> Decimal:
 
 def preparacion_detalle(v: Valoracion) -> list[dict]:
     """Lista desglosada de los gastos de preparación (concepto, importe)."""
+    from calculo.motor import tarifa_auto1_neta
+
     pintura = v.coste_pintura_por_pieza * Decimal(v.piezas_pintura or 0)
-    lineas = [
+    lineas = []
+    if v.tipo_subasta and v.tipo_subasta.modo == "iva_anuncio":
+        tarifa = tarifa_auto1_neta(v.iva_anuncio)
+        lineas.append((f"Tarifa Auto1 (IVA {v.iva_anuncio:.2f} € ÷ 0,21)", tarifa))
+        lineas.append(("Gestión documental Auto1", _conceptos_fijos_vigentes(v.proveedor, v.fecha_valoracion)))
+    lineas += [
         ("Mi comisión (Alberto)", v.coste_alberto),
         ("Gasolina", v.coste_gasolina),
         (f"Pintura · {v.piezas_pintura or 0} × {v.coste_pintura_por_pieza:.2f} €", pintura),
@@ -168,6 +181,7 @@ def entrada_de_valoracion(v: Valoracion) -> EntradaValoracion:
         descuento_comision_pct=v.descuento_comision_pct or Decimal("0"),
         regimen=v.regimen_fiscal,
         base_margen=v.proveedor.base_margen_rebu,
+        iva_anuncio=v.iva_anuncio or Decimal("0"),
     )
 
 

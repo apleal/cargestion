@@ -84,6 +84,63 @@ def coste_adquisicion(
     return euros(puja + comision_coste + config.conceptos_fijos)
 
 
+TARIFA_AUTO1_DIVISOR = Decimal("0.21")
+
+
+def tarifa_auto1_neta(iva_anuncio) -> Decimal:
+    """Tarifa de subasta de Auto1 (neta) = IVA del anuncio / 0,21."""
+    iva_anuncio = Decimal(iva_anuncio or 0)
+    if iva_anuncio <= 0:
+        return Decimal("0.00")
+    return euros(iva_anuncio / TARIFA_AUTO1_DIVISOR)
+
+
+def _evaluar_auto1(
+    config: ConfigProveedor, entrada: EntradaValoracion, puja: Decimal
+) -> Desglose:
+    iva_anuncio = Decimal(entrada.iva_anuncio or 0)
+    tarifa = tarifa_auto1_neta(iva_anuncio)
+    compra_coche = euros(puja - tarifa - iva_anuncio)
+    gestion = euros(config.conceptos_fijos)
+    prep = euros(entrada.gastos_preparacion)
+    gastos_lado = euros(tarifa + gestion + prep)
+    coste_total = euros(compra_coche + gastos_lado)
+
+    base_margen = euros(entrada.precio_venta - compra_coche)
+    if entrada.regimen == "rebu":
+        base_pos = base_margen if base_margen > 0 else Decimal("0")
+        iva_rebu = euros(base_pos * VEINTIUNO / CIENTO_VEINTIUNO)
+    else:
+        iva_rebu = Decimal("0.00")
+    margen_neto = euros(base_margen - iva_rebu)
+    beneficio = euros(margen_neto - gastos_lado)
+
+    rentabilidad = (beneficio / coste_total) if coste_total > 0 else Decimal("0")
+    margen_venta = (
+        (beneficio / entrada.precio_venta) if entrada.precio_venta > 0 else Decimal("0")
+    )
+    return Desglose(
+        puja=euros(puja),
+        comision_neta=tarifa,
+        comision_coste=tarifa,
+        conceptos_fijos=gestion,
+        coste_adquisicion=compra_coche,
+        gastos_preparacion=gastos_lado,  # incluye tarifa Auto1 + gestión + preparación
+        coste_total=coste_total,
+        base_margen=base_margen,
+        margen_bruto=base_margen,
+        iva_rebu=iva_rebu,
+        margen_neto=margen_neto,
+        beneficio_neto=beneficio,
+        rentabilidad_coste=rentabilidad,
+        margen_venta=margen_venta,
+        tramo=None,
+        modo="iva_anuncio",
+        iva_anuncio=iva_anuncio,
+        compra_coche=compra_coche,
+    )
+
+
 def evaluar(
     config: ConfigProveedor,
     entrada: EntradaValoracion,
@@ -91,6 +148,8 @@ def evaluar(
 ) -> Desglose:
     """Desglose completo para una puja concreta."""
     puja = Decimal(puja)
+    if config.modo == "iva_anuncio":
+        return _evaluar_auto1(config, entrada, puja)
     tramo = None if config.es_cuota_plana else tramo_para(config, puja)
 
     if config.es_cuota_plana:
@@ -170,7 +229,8 @@ def puja_maxima(
     if evaluar(config, entrada, Decimal("1")).rentabilidad_coste < objetivo:
         return None
 
-    lo, hi = Decimal("0"), venta
+    # En Auto1 la puja ("Precio Subasta") puede superar ligeramente la venta.
+    lo, hi = Decimal("0"), venta + Decimal("6000")
     for _ in range(80):
         mid = (lo + hi) / 2
         if evaluar(config, entrada, mid).rentabilidad_coste >= objetivo:

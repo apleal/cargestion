@@ -28,6 +28,7 @@
           <p><label>Orden lote</label>{{ form.orden_lote }}</p>
           <p><label>Régimen fiscal</label>{{ form.regimen_fiscal }}</p>
           <p><label>Estado</label>{{ form.estado }}</p>
+          <p><label>IVA del anuncio (€) · solo Auto1</label>{{ form.iva_anuncio }}</p>
           <p><label>Precio de venta estimado (€)</label>{{ form.precio_venta_estimado }}</p>
           <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
           <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>
@@ -94,7 +95,7 @@
 
   function campos(){
     var d = new FormData();
-    ['tipo_subasta','regimen_fiscal','precio_venta_estimado','piezas_pintura',
+    ['tipo_subasta','regimen_fiscal','iva_anuncio','precio_venta_estimado','piezas_pintura',
      'descuento_comision_pct','coste_alberto','coste_gasolina','coste_pintura_por_pieza',
      'coste_garantia','coste_mecanica','coste_cambio_titularidad','coste_transporte',
      'coste_itv','coste_tapiceria','coste_tintado','coste_otros'].forEach(function(n){
@@ -136,11 +137,22 @@
 
   function pintarDesglose(d, prep){
     if(!d){ bd.innerHTML=''; veredicto.textContent=''; return; }
+    var cabecera;
+    if(d.modo === 'iva_anuncio'){
+      cabecera =
+        fila('Precio Subasta (puja)', nf(d.puja)+' €') +
+        fila('− IVA del anuncio (deducible)', '−'+nf(d.iva_anuncio)+' €') +
+        fila('− Tarifa Auto1 (neto)', '−'+nf(d.comision_neta)+' €') +
+        fila('= Compra del coche (base REBU)', nf(d.compra_coche)+' €','sum');
+    } else {
+      cabecera =
+        fila('Adjudicación (puja)', nf(d.puja)+' €') +
+        fila('+ Comisión subasta ('+d.tramo+', c/IVA)', nf(d.comision_coste)+' €') +
+        fila('+ Gestión + tasa', nf(d.conceptos_fijos)+' €') +
+        fila('= Coste de adquisición', nf(d.coste_adquisicion)+' €','sum');
+    }
     bd.innerHTML =
-      fila('Adjudicación (puja)', nf(d.puja)+' €') +
-      fila('+ Comisión subasta ('+d.tramo+', c/IVA)', nf(d.comision_coste)+' €') +
-      fila('+ Gestión + tasa', nf(d.conceptos_fijos)+' €') +
-      fila('= Coste de adquisición', nf(d.coste_adquisicion)+' €','sum') +
+      cabecera +
       filasPrep(prep) +
       fila('= Preparación', nf(d.gastos_preparacion)+' €','sum') +
       fila('= Coste total desembolsado', nf(d.coste_total)+' €','grand') +

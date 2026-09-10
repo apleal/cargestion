@@ -11,6 +11,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from calculo.datos_auto1 import GESTION_AUTO1
 from calculo.datos_bca import (
     CUOTA_CONCURSO_BCA,
     GESTION_CON_IVA,
@@ -177,5 +178,29 @@ class Command(BaseCommand):
         errores = tarifa.validar_tramos()
         if errores:
             self.stderr.write(self.style.WARNING("Avisos en la tarifa: " + "; ".join(errores)))
+
+        # --- Auto1 ---
+        auto1, _ = Proveedor.objects.update_or_create(
+            nombre="Auto1",
+            defaults={"activo": True, "notas": "Auto1 (pestaña Auto1_IA del Excel)"},
+        )
+        Ubicacion.objects.update_or_create(
+            proveedor=auto1, nombre="Auto1 Online", defaults={"provincia": ""}
+        )
+        TipoSubasta.objects.update_or_create(
+            proveedor=auto1,
+            nombre="Auto1",
+            defaults={
+                "modo": TipoSubasta.Modo.IVA_ANUNCIO,
+                "usa_tabla_comision": False,
+                "aplica_conceptos_fijos": True,
+                "es_predeterminado": True,
+            },
+        )
+        ConceptoFijo.objects.update_or_create(
+            proveedor=auto1,
+            nombre="Gestión documental Auto1",
+            defaults={"importe": GESTION_AUTO1},
+        )
 
         self.stdout.write(self.style.SUCCESS("Datos iniciales cargados."))

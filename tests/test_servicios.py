@@ -62,6 +62,42 @@ def test_concurso_usa_cuota_plana(datos):
     assert res.desglose_para_puja.coste_adquisicion == Decimal("10351.00")
 
 
+def test_auto1_provider_y_calculo(datos):
+    from tasador.models import EstadoValoracion, Proveedor, SesionSubasta, Vehiculo
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    tipo = auto1.tipos_subasta.get(nombre="Auto1")
+    assert tipo.modo == "iva_anuncio"
+    assert auto1.conceptos_fijos.filter(nombre__icontains="Auto1").exists()
+
+    sesion = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-20"
+    )
+    veh = Vehiculo.objects.create(matricula="0000XXX", marca="VW", modelo="Golf")
+    v = models.Valoracion.objects.create(
+        vehiculo=veh, proveedor=auto1, tipo_subasta=tipo, sesion_subasta=sesion,
+        estado=EstadoValoracion.objects.get(nombre="Interesante"),
+        iva_anuncio=Decimal("307.02"),
+        precio_venta_estimado=Decimal("23500"),
+        piezas_pintura=3,
+        coste_alberto=Decimal("50"), coste_gasolina=Decimal("0"),
+        coste_pintura_por_pieza=Decimal("87"), coste_garantia=Decimal("300"),
+        coste_mecanica=Decimal("300"), coste_cambio_titularidad=Decimal("72"),
+        coste_transporte=Decimal("250"),
+    )
+    res = services.calcular(v, puja=Decimal("19090"))
+    d = res.desglose_para_puja
+    assert d.modo == "iva_anuncio"
+    assert d.comision_neta == Decimal("1462.00")     # tarifa Auto1
+    assert d.compra_coche == Decimal("17320.98")     # B - tarifa - IVA
+    assert d.margen_bruto == Decimal("6179.02")
+
+    detalle = services.preparacion_detalle(v)
+    conceptos = [x["concepto"] for x in detalle]
+    assert any("Tarifa Auto1" in c for c in conceptos)
+    assert any("Gestión documental Auto1" in c for c in conceptos)
+
+
 def test_transporte_por_zona_al_pegar(datos):
     """El lote coge el transporte de su zona de origen."""
     from tasador.models import SesionSubasta, TarifaTransporte

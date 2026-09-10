@@ -87,10 +87,15 @@ class Ubicacion(models.Model):
 
 
 class TipoSubasta(models.Model):
+    class Modo(models.TextChoices):
+        TABLA = "tabla", "Tabla por tramos (BCA)"
+        IVA_ANUNCIO = "iva_anuncio", "IVA del anuncio (Auto1)"
+
     proveedor = models.ForeignKey(
         Proveedor, on_delete=models.CASCADE, related_name="tipos_subasta"
     )
-    nombre = models.CharField(max_length=60)  # "BCA normal", "Concurso BCA"
+    nombre = models.CharField(max_length=60)  # "BCA normal", "Concurso BCA", "Auto1"
+    modo = models.CharField(max_length=15, choices=Modo.choices, default=Modo.TABLA)
     usa_tabla_comision = models.BooleanField(default=True)
     cuota_plana = models.DecimalField(
         **DEC, null=True, blank=True,
@@ -421,6 +426,10 @@ class Valoracion(models.Model):
 
     regimen_fiscal = models.CharField(
         max_length=10, choices=RegimenFiscal.choices, default=RegimenFiscal.REBU
+    )
+    iva_anuncio = models.DecimalField(
+        **DEC, default=Decimal("0"),
+        help_text="Solo Auto1: el importe de IVA que muestra el anuncio.",
     )
     precio_venta_estimado = models.DecimalField(**DEC)
     precio_anunciado = models.DecimalField(**DEC, null=True, blank=True)

@@ -30,16 +30,19 @@ class Tramo:
 class ConfigProveedor:
     """Reglas de coste de adquisición de un proveedor / tipo de subasta.
 
-    - Modo normal: ``tramos`` + ``conceptos_fijos`` (honorarios + tasas, ya con
-      su IVA incluido donde corresponda).
-    - Modo cuota plana (p. ej. "Concurso BCA"): ``cuota_plana`` distinta de
-      ``None`` ignora tramos y conceptos; el coste es ``puja + cuota_plana``.
+    - ``modo = "tabla"`` (BCA): ``tramos`` + ``conceptos_fijos`` (honorarios +
+      tasas, con su IVA incluido). ``cuota_plana`` distinta de ``None`` (p. ej.
+      "Concurso BCA") ignora tramos y conceptos: coste = ``puja + cuota_plana``.
+    - ``modo = "iva_anuncio"`` (Auto1): la puja es el "Precio Subasta" (coche +
+      tarifa + IVA). La tarifa neta = IVA_del_anuncio / 0,21; el IVA es
+      deducible; ``conceptos_fijos`` es la gestión documental de Auto1.
     """
 
     tramos: tuple[Tramo, ...] = ()
     conceptos_fijos: Decimal = Decimal("0")
     iva: Decimal = Decimal("1.21")
     cuota_plana: Decimal | None = None
+    modo: str = "tabla"  # "tabla" | "iva_anuncio"
 
     @property
     def es_cuota_plana(self) -> bool:
@@ -55,6 +58,7 @@ class EntradaValoracion:
     descuento_comision_pct: Decimal = Decimal("0")
     regimen: str = "rebu"  # "rebu" | "general"
     base_margen: str = "adquisicion"  # "adquisicion" | "adjudicacion"
+    iva_anuncio: Decimal = Decimal("0")  # solo Auto1: el IVA que muestra el anuncio
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,9 @@ class Desglose:
     rentabilidad_coste: Decimal
     margen_venta: Decimal
     tramo: Tramo | None
+    modo: str = "tabla"
+    iva_anuncio: Decimal = Decimal("0")  # Auto1
+    compra_coche: Decimal | None = None  # Auto1: puja - tarifa - iva_anuncio
 
 
 @dataclass(frozen=True)

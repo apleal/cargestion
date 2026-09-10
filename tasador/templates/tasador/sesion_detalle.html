@@ -31,7 +31,8 @@
         <tr>
           <th>Lote</th><th>Coche</th><th>Matrícula</th><th class="num">Km</th>
           <th class="num destacado">Puja 15%</th><th class="num destacado">Puja 12%</th><th class="num destacado">Puja 10%</th>
-          <th class="num">Venta €</th><th>Origen</th><th class="num">Transp.</th>
+          <th class="num">Venta €</th>
+          {% if es_auto1 %}<th class="num">IVA anuncio</th>{% else %}<th>Origen</th><th class="num">Transp.</th>{% endif %}
           <th>Carrocería</th><th class="num">Piezas</th>
           <th class="num">Beneficio</th><th class="num">Rent.</th>
           <th></th>
@@ -59,6 +60,12 @@
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
           </td>
+          {% if es_auto1 %}
+          <td class="num">
+            <input class="celda venta" data-campo="iva_anuncio" data-val="{{ v.pk }}"
+                   value="{{ v.iva_anuncio|floatformat:2 }}" inputmode="decimal">
+          </td>
+          {% else %}
           <td>
             <select class="celda origen" data-campo="zona_origen" data-val="{{ v.pk }}">
               {% for z in zonas_transporte %}
@@ -71,6 +78,7 @@
             </select>
           </td>
           <td class="num mono transporte">{{ f.transporte|eur }}</td>
+          {% endif %}
           <td>
             <select class="celda" data-campo="estado_carroceria_id" data-val="{{ v.pk }}">
               {% for c in carrocerias %}

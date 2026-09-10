@@ -135,12 +135,14 @@ def sesion_detalle(request, pk):
         sesion.proveedor.tarifas_transporte.filter(activa=True)
         .values_list("origen", flat=True)
     )
+    es_auto1 = sesion.proveedor.tipos_subasta.filter(modo="iva_anuncio").exists()
     ctx = {
         "sesion": sesion,
         "lotes": lotes,
         "estados": models.EstadoValoracion.objects.all(),
         "carrocerias": models.EstadoCarroceria.objects.all(),
         "zonas_transporte": zonas,
+        "es_auto1": es_auto1,
         "pegar_form": PegarLotesForm(),
     }
     return render(request, "tasador/sesion_detalle.html", ctx)
@@ -178,7 +180,7 @@ def celda_update(request, pk):
     valor = request.POST.get("valor", "")
 
     editables_decimal = {
-        "precio_venta_estimado", "descuento_comision_pct", "coste_transporte",
+        "precio_venta_estimado", "descuento_comision_pct", "iva_anuncio", "coste_transporte",
         "coste_mecanica", "coste_garantia", "coste_pintura_por_pieza",
         "coste_alberto", "coste_gasolina", "coste_cambio_titularidad",
         "coste_itv", "coste_tapiceria", "coste_tintado", "coste_otros",
@@ -331,6 +333,7 @@ def calcular_api(request):
         proveedor=tipo.proveedor,
         tipo_subasta=tipo,
         regimen_fiscal=request.POST.get("regimen_fiscal") or "rebu",
+        iva_anuncio=dec("iva_anuncio"),
         precio_venta_estimado=dec("precio_venta_estimado"),
         piezas_pintura=int(dec("piezas_pintura", "4")),
         descuento_comision_pct=dec("descuento_comision_pct"),
@@ -378,8 +381,16 @@ def calcular_api(request):
                 "beneficio_neto": str(d.beneficio_neto),
                 "rentabilidad_coste": _pct_es(d.rentabilidad_coste),
                 "margen_venta": _pct_es(d.margen_venta),
+                "modo": d.modo,
+                "iva_anuncio": str(d.iva_anuncio),
+                "compra_coche": str(d.compra_coche) if d.compra_coche is not None else None,
                 "tramo": (
-                    f"{d.tramo.desde}–{d.tramo.hasta or '∞'}" if d.tramo else "cuota plana"
+                    f"{d.tramo.desde:.0f}–{d.tramo.hasta:.0f}"
+                    if d.tramo and d.tramo.hasta is not None
+                    else (
+                        f"≥ {d.tramo.desde:.0f}" if d.tramo
+                        else ("Auto1" if d.modo == "iva_anuncio" else "cuota plana")
+                    )
                 ),
             },
         }

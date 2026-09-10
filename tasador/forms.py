@@ -24,7 +24,7 @@ class ValoracionForm(forms.ModelForm):
             "sesion_subasta", "proveedor", "tipo_subasta", "ubicacion",
             "lote_id", "orden_lote", "url_anuncio", "zona_origen",
             "fecha_valoracion", "fecha_subasta", "kilometros",
-            "regimen_fiscal", "precio_venta_estimado", "precio_anunciado",
+            "regimen_fiscal", "iva_anuncio", "precio_venta_estimado", "precio_anunciado",
             "estado_carroceria", "piezas_pintura", "descuento_comision_pct",
             "coste_alberto", "coste_gasolina", "coste_pintura_por_pieza",
             "coste_garantia", "coste_mecanica", "coste_cambio_titularidad",
@@ -78,11 +78,13 @@ class SesionSubastaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["ubicacion"].queryset = models.Ubicacion.objects.filter(
+            activa=True
+        ).select_related("proveedor")
         if not self.instance.pk:
             bca = models.Proveedor.objects.filter(nombre="BCA").first()
             if bca:
                 self.fields["proveedor"].initial = bca.pk
-                self.fields["ubicacion"].queryset = bca.ubicaciones.filter(activa=True)
             self.fields["fecha"].initial = timezone.localdate()
 
 
