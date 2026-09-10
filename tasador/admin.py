@@ -39,10 +39,22 @@ class ConceptoFijoInline(admin.TabularInline):
     extra = 0
 
 
+class TarifaTransporteInline(admin.TabularInline):
+    model = models.TarifaTransporte
+    extra = 0
+
+
 @admin.register(models.Proveedor)
 class ProveedorAdmin(admin.ModelAdmin):
     list_display = ("nombre", "activo", "base_margen_rebu")
-    inlines = [UbicacionInline, TipoSubastaInline, ConceptoFijoInline]
+    inlines = [UbicacionInline, TipoSubastaInline, ConceptoFijoInline, TarifaTransporteInline]
+
+
+@admin.register(models.TarifaTransporte)
+class TarifaTransporteAdmin(SimpleHistoryAdmin):
+    list_display = ("proveedor", "origen", "precio", "vigencia_desde", "activa")
+    list_filter = ("proveedor", "activa")
+    list_editable = ("precio", "activa")
 
 
 @admin.register(models.ParametrosCoste)

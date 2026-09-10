@@ -85,6 +85,28 @@ def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
     assert contenido.index("9553LDF") >= 0
 
 
+def test_celda_origen_actualiza_transporte(cliente):
+    from tasador.models import TarifaTransporte, Valoracion
+
+    tt = TarifaTransporte.objects.filter(origen="Sevilla").first()
+    tt.precio = 470
+    tt.save()
+
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.filter(sesion_subasta=s).first()
+
+    resp = cliente.post(
+        reverse("celda_update", args=[v.pk]),
+        {"campo": "zona_origen", "valor": "Sevilla"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["transporte"] == "470.00"
+    v.refresh_from_db()
+    assert v.zona_origen == "Sevilla"
+    assert v.coste_transporte == 470
+
+
 def test_celda_update_recalcula_puja(cliente):
     from tasador.models import Valoracion
 

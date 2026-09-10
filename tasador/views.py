@@ -50,6 +50,8 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "puja_10": puja("0.10"),
         "beneficio": str(v.r_beneficio_neto),
         "rentabilidad": f"{v.r_rentabilidad_coste:.1%}",
+        "transporte": str(v.coste_transporte),
+        "zona_origen": v.zona_origen,
     }
 
 
@@ -122,11 +124,16 @@ def sesion_detalle(request, pk):
     )
     for v in lotes:
         v.fila = _fila_valoracion(v)
+    zonas = list(
+        sesion.proveedor.tarifas_transporte.filter(activa=True)
+        .values_list("origen", flat=True)
+    )
     ctx = {
         "sesion": sesion,
         "lotes": lotes,
         "estados": models.EstadoValoracion.objects.all(),
         "carrocerias": models.EstadoCarroceria.objects.all(),
+        "zonas_transporte": zonas,
         "pegar_form": PegarLotesForm(),
     }
     return render(request, "tasador/sesion_detalle.html", ctx)
@@ -179,6 +186,11 @@ def celda_update(request, pk):
             v.orden_lote = int(valor) if valor else None
         elif campo == "lote_id":
             v.lote_id = valor
+        elif campo == "zona_origen":
+            v.zona_origen = valor
+            tt = services.tarifa_transporte(v.proveedor, valor, v.fecha_valoracion)
+            if tt:
+                v.coste_transporte = tt.precio
         elif campo == "estado_id":
             v.estado_id = int(valor)
         elif campo == "estado_carroceria_id":

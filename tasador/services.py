@@ -20,11 +20,31 @@ from .models import (
     SesionSubasta,
     TarifaComision,
     TipoSubasta,
+    TarifaTransporte,
     Ubicacion,
     Valoracion,
     Vehiculo,
 )
 from .parser import LoteParseado
+
+
+def tarifa_transporte(proveedor, origen: str, fecha=None) -> TarifaTransporte | None:
+    """Tarifa de transporte vigente para una zona de origen (case-insensitive)."""
+    if not origen:
+        return None
+    fecha = fecha or timezone.localdate()
+    candidatas = [
+        t for t in proveedor.tarifas_transporte.filter(
+            origen__iexact=origen.strip(), activa=True
+        )
+        if (t.vigencia_desde is None or t.vigencia_desde <= fecha)
+        and (t.vigencia_hasta is None or t.vigencia_hasta >= fecha)
+    ]
+    if candidatas:
+        return sorted(
+            candidatas, key=lambda t: t.vigencia_desde or timezone.datetime.min.date()
+        )[-1]
+    return None
 
 
 def _conceptos_fijos_vigentes(proveedor: Proveedor, fecha=None) -> Decimal:
@@ -202,6 +222,12 @@ def crear_valoracion_desde_lote(
         else None
     )
 
+    zona = lote.zona_origen or (
+        sesion.ubicacion.nombre if sesion.ubicacion else ""
+    )
+    tt = tarifa_transporte(sesion.proveedor, zona)
+    transporte = tt.precio if tt else params.transporte
+
     v = Valoracion.objects.create(
         vehiculo=vehiculo,
         valoracion_anterior=anterior,
@@ -209,6 +235,7 @@ def crear_valoracion_desde_lote(
         proveedor=sesion.proveedor,
         tipo_subasta=tipo,
         ubicacion=sesion.ubicacion,
+        zona_origen=zona,
         lote_id=lote.lote,
         orden_lote=lote.lote_num,
         fecha_valoracion=timezone.localdate(),
@@ -223,7 +250,7 @@ def crear_valoracion_desde_lote(
         coste_garantia=params.garantia,
         coste_mecanica=params.mecanica,
         coste_cambio_titularidad=params.cambio_titularidad,
-        coste_transporte=params.transporte,
+        coste_transporte=transporte,
         coste_itv=params.itv,
         estado=estado_pdte,
         creado_por=usuario,

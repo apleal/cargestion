@@ -30,6 +30,7 @@
       <thead>
         <tr>
           <th>Lote</th><th>Coche</th><th>Matrícula</th><th class="num">Km</th>
+          <th>Origen</th><th class="num">Transp.</th>
           <th class="num">Venta €</th><th>Carrocería</th><th class="num">Piezas</th>
           <th class="num destacado">Puja 15%</th><th class="num">Puja 12%</th><th class="num">Puja 10%</th>
           <th class="num">Beneficio</th><th class="num">Rent.</th>
@@ -51,6 +52,18 @@
           </td>
           <td class="mono">{{ v.vehiculo.matricula }}</td>
           <td class="num mono">{{ v.kilometros|intcomma }}</td>
+          <td>
+            <select class="celda origen" data-campo="zona_origen" data-val="{{ v.pk }}">
+              {% for z in zonas_transporte %}
+              <option value="{{ z }}" {% if v.zona_origen == z %}selected{% endif %}>{{ z }}</option>
+              {% endfor %}
+              {% if v.zona_origen and v.zona_origen not in zonas_transporte %}
+              <option value="{{ v.zona_origen }}" selected>{{ v.zona_origen }} (sin tarifa)</option>
+              {% endif %}
+              <option value="">— manual</option>
+            </select>
+          </td>
+          <td class="num mono transporte">{{ v.fila.transporte|floatformat:0 }} €</td>
           <td class="num">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
@@ -82,7 +95,7 @@
         </tr>
         {% endwith %}
         {% empty %}
-        <tr><td colspan="14" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
+        <tr><td colspan="16" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -122,6 +135,10 @@
           tr.querySelector('.puja-10').textContent = nf(j.puja_10);
           tr.querySelector('.beneficio').textContent = nf(j.beneficio);
           tr.querySelector('.rent').textContent = j.rentabilidad;
+          if(j.transporte !== undefined){
+            var tp = tr.querySelector('.transporte');
+            if(tp) tp.textContent = Math.round(parseFloat(j.transporte)) + ' €';
+          }
           if(j.piezas_pintura !== undefined){
             var pz = tr.querySelector('.piezas');
             if(pz && document.activeElement !== pz) pz.value = j.piezas_pintura;

@@ -24,6 +24,7 @@ from tasador.models import (
     EstadoValoracion,
     Proveedor,
     TarifaComision,
+    TarifaTransporte,
     TipoSubasta,
     TramoComision,
     Ubicacion,
@@ -62,6 +63,17 @@ UBICACIONES_BCA = [
     ("BCA Sevilla", "Sevilla"),
     ("BCA Alicante", "Alicante"),
     ("BCA Valencia", "Valencia"),
+    ("BCA Online", ""),
+]
+
+# Precios de EJEMPLO. Ajústalos en Configuración -> Tarifas de transporte.
+TRANSPORTE_BCA = [
+    ("Madrid", 350),
+    ("Barcelona", 350),
+    ("Valencia", 350),
+    ("Sevilla", 450),
+    ("Alicante", 380),
+    ("Otras", 450),
 ]
 
 
@@ -130,6 +142,17 @@ class Command(BaseCommand):
             nombre="Tasa de transferencia (DGT, no sujeta)",
             defaults={"importe": TASA_DGT},
         )
+
+        for origen, precio in TRANSPORTE_BCA:
+            TarifaTransporte.objects.get_or_create(
+                proveedor=bca,
+                origen=origen,
+                vigencia_desde=None,
+                defaults={
+                    "precio": Decimal(str(precio)),
+                    "observaciones": "PRECIO DE EJEMPLO — ajustar",
+                },
+            )
 
         tarifa, _ = TarifaComision.objects.get_or_create(
             proveedor=bca,

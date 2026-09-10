@@ -63,6 +63,7 @@ class LoteParseado:
     matricula: str = ""
     fecha_matriculacion: str = ""
     ubicacion: str = ""
+    zona_origen: str = ""
     dudosos: list[str] = field(default_factory=list)
     no_reconocidos: list[str] = field(default_factory=list)
 
@@ -133,7 +134,18 @@ def parsear_linea(linea: str) -> LoteParseado:
         r.dudosos.append("fecha")
 
     r.ubicacion = datos.get("ubicacion", "").strip()
+    r.zona_origen = normalizar_zona(r.ubicacion)
     return r
+
+
+def normalizar_zona(texto: str) -> str:
+    """"BCA Madrid" -> "Madrid"; "BCA - Sevilla" -> "Sevilla"."""
+    t = (texto or "").strip()
+    for prefijo in ("BCA -", "BCA-", "BCA"):
+        if t.upper().startswith(prefijo):
+            t = t[len(prefijo):]
+            break
+    return t.strip(" -·")
 
 
 def parsear_texto(texto: str) -> list[LoteParseado]:

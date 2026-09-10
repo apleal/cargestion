@@ -209,6 +209,38 @@ class ConceptoFijo(models.Model):
         return f"{self.nombre}: {self.importe} €"
 
 
+class TarifaTransporte(models.Model):
+    """Coste de traer el coche desde una zona de origen (versionado)."""
+
+    proveedor = models.ForeignKey(
+        Proveedor, on_delete=models.CASCADE, related_name="tarifas_transporte"
+    )
+    origen = models.CharField(max_length=60, help_text='Zona: "Madrid", "Barcelona"…')
+    precio = models.DecimalField(**DEC, help_text="Importe neto (sin IVA).")
+    vigencia_desde = models.DateField(null=True, blank=True)
+    vigencia_hasta = models.DateField(null=True, blank=True)
+    activa = models.BooleanField(default=True)
+    observaciones = models.CharField(max_length=200, blank=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = "tarifa de transporte"
+        verbose_name_plural = "tarifas de transporte"
+        ordering = ["proveedor", "origen"]
+
+    def __str__(self) -> str:
+        return f"{self.origen}: {self.precio} €"
+
+    @property
+    def vigente(self) -> bool:
+        hoy = timezone.localdate()
+        if self.vigencia_desde and hoy < self.vigencia_desde:
+            return False
+        if self.vigencia_hasta and hoy > self.vigencia_hasta:
+            return False
+        return self.activa
+
+
 class ParametrosCoste(models.Model):
     """Valores por defecto de los costes de preparación (versionados)."""
 
@@ -378,6 +410,10 @@ class Valoracion(models.Model):
     lote_id = models.CharField(max_length=20, blank=True)
     orden_lote = models.PositiveIntegerField(null=True, blank=True)
     url_anuncio = models.URLField(blank=True)
+    zona_origen = models.CharField(
+        max_length=60, blank=True,
+        help_text="Ciudad/zona donde está físicamente el coche (para el transporte).",
+    )
 
     fecha_valoracion = models.DateField(default=timezone.localdate)
     fecha_subasta = models.DateField(null=True, blank=True)

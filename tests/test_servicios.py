@@ -62,6 +62,28 @@ def test_concurso_usa_cuota_plana(datos):
     assert res.desglose_para_puja.coste_adquisicion == Decimal("10351.00")
 
 
+def test_transporte_por_zona_al_pegar(datos):
+    """El lote coge el transporte de su zona de origen."""
+    from tasador.models import SesionSubasta, TarifaTransporte
+    from tasador.parser import parsear_linea
+
+    bca = models.Proveedor.objects.get(nombre="BCA")
+    TarifaTransporte.objects.filter(proveedor=bca, origen="Barcelona").update(
+        precio=Decimal("500")
+    )
+    sesion = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.get(nombre="BCA Online"),
+        fecha="2026-09-20",
+    )
+    linea = parsear_linea(
+        "7\tAudi A3 A3 1.5 TFSI\t110 KW (150 CV), Gasolina, Manual, 90000 Km, 2020\t1234ABC\t01/01/2020\tBCA Barcelona"
+    )
+    assert linea.zona_origen == "Barcelona"
+    v, _ = services.crear_valoracion_desde_lote(linea, sesion)
+    assert v.zona_origen == "Barcelona"
+    assert v.coste_transporte == Decimal("500")
+
+
 def test_tarifa_versionada_no_afecta_valoracion_antigua(datos):
     """Cambiar la tarifa después no altera el snapshot guardado."""
     v = _valoracion()
