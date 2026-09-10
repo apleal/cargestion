@@ -83,7 +83,14 @@
   var veredicto = document.getElementById('veredicto');
   var t = null;
 
-  function nf(x){ try { return new Intl.NumberFormat('es-ES',{minimumFractionDigits:2}).format(parseFloat(x)); } catch(e){ return x; } }
+  function nf(x){
+    var n = parseFloat(x);
+    if(isNaN(n)) return '—';
+    var neg = n < 0; n = Math.abs(n);
+    var p = n.toFixed(2).split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (neg ? '−' : '') + p[0] + ',' + p[1];
+  }
 
   function campos(){
     var d = new FormData();
@@ -120,14 +127,22 @@
 
   function fila(k,v,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+k+'</td><td>'+v+'</td></tr>'; }
 
-  function pintarDesglose(d){
+  function filasPrep(prep){
+    if(!prep || !prep.length) return '';
+    return prep.map(function(x){
+      return fila('&nbsp;&nbsp;'+x.concepto, nf(x.importe)+' €', 'minor');
+    }).join('');
+  }
+
+  function pintarDesglose(d, prep){
     if(!d){ bd.innerHTML=''; veredicto.textContent=''; return; }
     bd.innerHTML =
       fila('Adjudicación (puja)', nf(d.puja)+' €') +
       fila('+ Comisión subasta ('+d.tramo+', c/IVA)', nf(d.comision_coste)+' €') +
       fila('+ Gestión + tasa', nf(d.conceptos_fijos)+' €') +
       fila('= Coste de adquisición', nf(d.coste_adquisicion)+' €','sum') +
-      fila('+ Preparación', nf(d.gastos_preparacion)+' €') +
+      filasPrep(prep) +
+      fila('= Preparación', nf(d.gastos_preparacion)+' €','sum') +
       fila('= Coste total desembolsado', nf(d.coste_total)+' €','grand') +
       fila('Margen bruto (venta − adquisición)', nf(d.margen_bruto)+' €') +
       fila('− IVA REBU (21/121)', '−'+nf(d.iva_rebu)+' €') +
@@ -145,7 +160,13 @@
       .then(function(j){
         if(j.error){ scn.innerHTML = '<div class="s neg">'+j.error+'</div>'; return; }
         pintarEscenarios(j.escenarios);
-        pintarDesglose(j.desglose);
+        // si no hay puja escrita, precarga la del objetivo (15 %) y recalcula
+        if(!pujaIn.value && j.escenarios[0] && j.escenarios[0].puja_maxima){
+          pujaIn.value = Math.round(parseFloat(j.escenarios[0].puja_maxima));
+          recalc();
+          return;
+        }
+        pintarDesglose(j.desglose, j.preparacion);
       })
       .catch(function(){});
   }

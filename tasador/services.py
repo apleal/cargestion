@@ -7,7 +7,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from calculo import ConfigProveedor, EntradaValoracion, Tramo, escenarios, evaluar
-from calculo.motor import puja_maxima
+from calculo.motor import euros, puja_maxima
 
 from .dedup import buscar_vehiculo_similar
 from .models import (
@@ -134,6 +134,31 @@ def gastos_preparacion(v: Valoracion) -> Decimal:
         + v.coste_tintado
         + v.coste_otros
     )
+
+
+def preparacion_detalle(v: Valoracion) -> list[dict]:
+    """Lista desglosada de los gastos de preparación (concepto, importe)."""
+    pintura = v.coste_pintura_por_pieza * Decimal(v.piezas_pintura or 0)
+    lineas = [
+        ("Mi comisión (Alberto)", v.coste_alberto),
+        ("Gasolina", v.coste_gasolina),
+        (f"Pintura · {v.piezas_pintura or 0} × {v.coste_pintura_por_pieza:.2f} €", pintura),
+        ("Garantía", v.coste_garantia),
+        ("Mecánica", v.coste_mecanica),
+        ("Cambio de titularidad", v.coste_cambio_titularidad),
+        ("Transporte", v.coste_transporte),
+        ("ITV", v.coste_itv),
+        ("Tapicería", v.coste_tapiceria),
+        ("Tintado", v.coste_tintado),
+        ("Otros", v.coste_otros),
+    ]
+    # se muestran siempre los principales; los opcionales solo si tienen importe
+    opcionales = {"ITV", "Tapicería", "Tintado", "Otros"}
+    return [
+        {"concepto": c, "importe": euros(imp)}
+        for c, imp in lineas
+        if imp or c not in opcionales
+    ]
 
 
 def entrada_de_valoracion(v: Valoracion) -> EntradaValoracion:

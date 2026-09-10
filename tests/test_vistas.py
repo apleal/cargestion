@@ -52,6 +52,10 @@ def test_calcular_api_devuelve_escenarios(cliente):
     assert len(data["escenarios"]) == 3
     assert data["escenarios"][0]["puja_maxima"] is not None
     assert data["desglose"]["coste_adquisicion"] == "10643.48"
+    conceptos = [x["concepto"] for x in data["preparacion"]]
+    assert any("Pintura" in c and "4 " in c and "87" in c for c in conceptos)
+    pintura = next(x for x in data["preparacion"] if "Pintura" in x["concepto"])
+    assert pintura["importe"] == "348.00"
 
 
 LINEA = "3\tCitroën C1 C1 1.0 VTI FEEL 72\t53 KW (72 CV), Gasolina, Manual, 79328 Km, 2019\t9553LDF\t17/12/2019\tBCA Madrid"

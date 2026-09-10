@@ -71,6 +71,8 @@ button.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;pa
 .bd td:last-child{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
 .bd tr.sum td{font-weight:600;border-top:1px solid var(--line-strong)}
 .bd tr.grand td{font-weight:700;border-top:2px solid var(--ink)}
+.bd tr.minor td{color:var(--ink-soft);font-size:.8rem;padding:3px 0}
+.bd tr.minor td:last-child{color:var(--ink)}
 .neg{color:var(--warn)}
 
 .pill{display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:999px;

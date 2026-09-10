@@ -357,6 +357,10 @@ def calcular_api(request):
     return JsonResponse(
         {
             "gastos_preparacion": str(resultado.entrada.gastos_preparacion),
+            "preparacion": [
+                {"concepto": x["concepto"], "importe": str(x["importe"])}
+                for x in services.preparacion_detalle(v)
+            ],
             "escenarios": _fmt_escenarios(resultado.escenarios),
             "desglose": None
             if d is None
