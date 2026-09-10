@@ -13,12 +13,14 @@ Estado: **Etapa 1 (MVP)** en construcción. Ver `docs/` y la propuesta funcional
 python -m venv .venv
 .venv\Scripts\activate            # Windows
 pip install -r requirements-dev.txt
-copy .env.example .env            # y edita SECRET_KEY
+copy .env.example .env            # IMPRESCINDIBLE: sin .env arranca en modo produccion
 python manage.py migrate
 python manage.py seed_datos       # datos de BCA, estados, escenarios
 python manage.py createsuperuser
 python manage.py runserver
 ```
+
+Abre **http://localhost:8000/** (con `http://`, no `https://`).
 
 - Aplicación: http://localhost:8000/
 - Configuración (proveedores, tarifas, tramos): http://localhost:8000/admin/

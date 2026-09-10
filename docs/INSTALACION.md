@@ -41,6 +41,10 @@ ni Docker para desarrollar.
    | `CSRF_TRUSTED_ORIGINS` | `https://tasador.tudominio.com` |
    | `DATABASE_URL` | la cadena del servicio PostgreSQL |
    | `MEDIA_ROOT` | `/app/media` |
+   | `SECURE_SSL_REDIRECT` | `True` |
+   | `SESSION_COOKIE_SECURE` | `True` |
+   | `CSRF_COOKIE_SECURE` | `True` |
+   | `SECURE_HSTS_SECONDS` | `2592000` (solo con el dominio definitivo; nunca en localhost) |
 
 6. **Dominios**: añade el subdominio; EasyPanel emite el certificado SSL solo.
 7. **Volúmenes**: monta un volumen persistente en `/app/media` y otro en

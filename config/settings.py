@@ -127,14 +127,19 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
 }
 
-# Seguridad en producción (DEBUG=False)
-if not DEBUG:
-    SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT", default=True)
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 2592000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# Seguridad. Todo opt-in por variable de entorno: en local (sin .env o DEBUG=True)
+# queda desactivado; en EasyPanel se activa con las variables correspondientes.
+# EasyPanel termina el TLS y reenvía por http con la cabecera X-Forwarded-Proto.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+# HSTS: 0 = desactivado. Actívalo (p. ej. 2592000) SOLO en el dominio de producción,
+# nunca en localhost (deja el navegador clavado en https para siempre).
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False
+)
 
 LOGGING = {
     "version": 1,
