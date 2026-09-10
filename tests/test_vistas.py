@@ -79,10 +79,17 @@ def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
 
     rejilla = cliente.get(reverse("sesion_detalle", args=[s.pk]))
     assert rejilla.status_code == 200
-    assert b"Citro" in rejilla.content
-    # ordenadas por lote: la 2 (lote 3) despues de la 1 (lote 1)... comprobamos que hay orden
-    contenido = rejilla.content.decode()
-    assert contenido.index("9553LDF") >= 0
+    html = rejilla.content.decode()
+    assert "Citro" in html
+
+    import re
+    thead = re.search(r"<thead>(.*?)</thead>", html, re.S).group(1)
+    cols = [c.strip() for c in re.findall(r"<th[^>]*>(.*?)</th>", thead)]
+    # la puja debe ir justo despues de Km, y no debe haber columna "Estado"
+    assert cols[:7] == ["Lote", "Coche", "Matrícula", "Km", "Puja 15%", "Puja 12%", "Puja 10%"]
+    assert "Estado" not in cols
+    # boton Costes, no enlace de texto
+    assert 'class="btn mini-btn"' in html
 
 
 def test_celda_origen_actualiza_transporte(cliente):

@@ -22,7 +22,7 @@ class ValoracionForm(forms.ModelForm):
         model = models.Valoracion
         fields = [
             "sesion_subasta", "proveedor", "tipo_subasta", "ubicacion",
-            "lote_id", "orden_lote", "url_anuncio",
+            "lote_id", "orden_lote", "url_anuncio", "zona_origen",
             "fecha_valoracion", "fecha_subasta", "kilometros",
             "regimen_fiscal", "precio_venta_estimado", "precio_anunciado",
             "estado_carroceria", "piezas_pintura", "descuento_comision_pct",

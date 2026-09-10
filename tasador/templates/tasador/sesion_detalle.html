@@ -30,11 +30,11 @@
       <thead>
         <tr>
           <th>Lote</th><th>Coche</th><th>Matrícula</th><th class="num">Km</th>
-          <th>Origen</th><th class="num">Transp.</th>
-          <th class="num">Venta €</th><th>Carrocería</th><th class="num">Piezas</th>
-          <th class="num destacado">Puja 15%</th><th class="num">Puja 12%</th><th class="num">Puja 10%</th>
+          <th class="num destacado">Puja 15%</th><th class="num destacado">Puja 12%</th><th class="num destacado">Puja 10%</th>
+          <th class="num">Venta €</th><th>Origen</th><th class="num">Transp.</th>
+          <th>Carrocería</th><th class="num">Piezas</th>
           <th class="num">Beneficio</th><th class="num">Rent.</th>
-          <th>Estado</th><th></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +51,14 @@
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
           </td>
           <td class="mono">{{ v.vehiculo.matricula }}</td>
-          <td class="num mono">{{ v.kilometros|intcomma }}</td>
+          <td class="num mono">{{ v.kilometros|default_if_none:0|intcomma }}</td>
+          <td class="num destacado puja-15">{% if f.puja_15 %}{{ f.puja_15|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+          <td class="num destacado puja-12">{% if f.puja_12 %}{{ f.puja_12|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+          <td class="num destacado puja-10">{% if f.puja_10 %}{{ f.puja_10|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+          <td class="num">
+            <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
+                   value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
+          </td>
           <td>
             <select class="celda origen" data-campo="zona_origen" data-val="{{ v.pk }}">
               {% for z in zonas_transporte %}
@@ -63,11 +70,7 @@
               <option value="">— manual</option>
             </select>
           </td>
-          <td class="num mono transporte">{{ v.fila.transporte|floatformat:0 }} €</td>
-          <td class="num">
-            <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
-                   value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
-          </td>
+          <td class="num mono transporte">{{ f.transporte|floatformat:0 }} €</td>
           <td>
             <select class="celda" data-campo="estado_carroceria_id" data-val="{{ v.pk }}">
               {% for c in carrocerias %}
@@ -79,28 +82,18 @@
             <input class="celda mini piezas" data-campo="piezas_pintura" data-val="{{ v.pk }}"
                    value="{{ v.piezas_pintura }}" inputmode="numeric">
           </td>
-          <td class="num destacado puja-15">{% if f.puja_15 %}{{ f.puja_15|floatformat:0 }} €{% else %}—{% endif %}</td>
-          <td class="num puja-12">{% if f.puja_12 %}{{ f.puja_12|floatformat:0 }} €{% else %}—{% endif %}</td>
-          <td class="num puja-10">{% if f.puja_10 %}{{ f.puja_10|floatformat:0 }} €{% else %}—{% endif %}</td>
-          <td class="num beneficio">{{ f.beneficio|floatformat:0 }} €</td>
+          <td class="num beneficio">{{ f.beneficio|floatformat:0|intcomma }} €</td>
           <td class="num rent">{{ f.rentabilidad }}</td>
-          <td>
-            <select class="celda estado" data-campo="estado_id" data-val="{{ v.pk }}">
-              {% for e in estados %}
-              <option value="{{ e.pk }}" {% if v.estado_id == e.pk %}selected{% endif %}>{{ e.nombre }}</option>
-              {% endfor %}
-            </select>
-          </td>
-          <td><a class="mono" href="{% url 'valoracion_editar' v.pk %}">costes ›</a></td>
+          <td><a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a></td>
         </tr>
         {% endwith %}
         {% empty %}
-        <tr><td colspan="16" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
+        <tr><td colspan="15" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="mono ayuda">Edita <b>Venta</b>, carrocería, piezas o estado y la puja se recalcula sola. Para afinar costes de un coche, abre <b>costes ›</b>.</p>
+  <p class="mono ayuda">Escribe la <b>Venta</b> y la puja aparece. Cambia origen, carrocería o piezas y se recalcula. El botón <b>Costes</b> abre el ajuste fino de cada coche (incluido su estado: interesante, descartado…).</p>
 </div>
 {% endblock %}
 

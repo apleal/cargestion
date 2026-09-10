@@ -109,6 +109,10 @@ table.rejilla th{position:sticky;top:0;z-index:2;background:var(--surface-2);whi
 table.rejilla th,table.rejilla td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:4px 8px}
 table.rejilla th.destacado,table.rejilla td.destacado{background:var(--accent-soft)}
 table.rejilla td.destacado{font-weight:700;color:var(--accent-ink);font-family:"IBM Plex Mono",monospace}
+table.rejilla td.puja-15,table.rejilla th:nth-child(5){border-left:2px solid var(--accent)}
+table.rejilla td.puja-10{border-right:2px solid var(--accent)}
+table.rejilla td.puja-15{font-size:.92rem}
+.mini-btn{padding:4px 10px;font-size:.78rem;white-space:nowrap}
 table.rejilla .coche a{text-decoration:none;font-weight:600}
 table.rejilla .coche .ver{color:var(--ink-faint);font-size:.76rem;display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 table.rejilla input.celda,table.rejilla select.celda{

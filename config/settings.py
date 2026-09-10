@@ -112,6 +112,7 @@ LANGUAGE_CODE = "es"
 TIME_ZONE = "Europe/Madrid"
 USE_I18N = True
 USE_TZ = True
+USE_THOUSAND_SEPARATOR = True  # 39.558, 13.648 €
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
