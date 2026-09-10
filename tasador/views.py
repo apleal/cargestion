@@ -59,6 +59,7 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "rentabilidad": _pct_es(v.r_rentabilidad_coste),
         "transporte": str(v.coste_transporte),
         "zona_origen": v.zona_origen,
+        "precio_salida": str(v.precio_salida),
     }
 
 
@@ -127,7 +128,7 @@ def sesion_detalle(request, pk):
     )
     lotes = list(
         sesion.valoraciones.select_related("vehiculo", "estado", "estado_carroceria")
-        .order_by("orden_lote", "lote_id", "created_at")
+        .order_by("orden_lote", "created_at")
     )
     for v in lotes:
         v.fila = _fila_valoracion(v)
@@ -157,7 +158,12 @@ def sesion_pegar(request, pk):
         messages.error(request, "Pega algún texto.")
         return redirect("sesion_detalle", pk=pk)
 
-    lotes = parsear_texto(form.cleaned_data["texto"])
+    formato = (
+        "auto1"
+        if sesion.proveedor.tipos_subasta.filter(modo="iva_anuncio").exists()
+        else "bca"
+    )
+    lotes = parsear_texto(form.cleaned_data["texto"], formato=formato)
     creados, retasaciones = 0, 0
     for lote in lotes:
         _v, es_ret = services.crear_valoracion_desde_lote(lote, sesion, request.user)

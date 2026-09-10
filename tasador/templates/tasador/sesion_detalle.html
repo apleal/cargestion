@@ -29,7 +29,8 @@
     <table class="rejilla">
       <thead>
         <tr>
-          <th>Lote</th><th>Coche</th><th>Matrícula</th><th class="num">Km</th>
+          <th>Lote</th><th>Coche</th><th>{% if es_auto1 %}Ref. Auto1{% else %}Matrícula{% endif %}</th><th class="num">Km</th>
+          {% if es_auto1 %}<th class="num">Salida</th>{% endif %}
           <th class="num destacado">Puja 15%</th><th class="num destacado">Puja 12%</th><th class="num destacado">Puja 10%</th>
           <th class="num">Venta €</th>
           {% if es_auto1 %}<th class="num">IVA anuncio</th>{% else %}<th>Origen</th><th class="num">Transp.</th>{% endif %}
@@ -51,8 +52,9 @@
             <span class="ver">{{ v.vehiculo.version }}</span>
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
           </td>
-          <td class="mono">{{ v.vehiculo.matricula }}</td>
+          <td class="mono">{{ v.vehiculo.matricula|default:v.lote_id }}</td>
           <td class="num mono">{{ v.kilometros|miles }}</td>
+          {% if es_auto1 %}<td class="num mono">{{ v.precio_salida|eur }}</td>{% endif %}
           <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>
           <td class="num destacado puja-12">{{ f.puja_12|eur }}</td>
           <td class="num destacado puja-10">{{ f.puja_10|eur }}</td>

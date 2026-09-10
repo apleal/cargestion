@@ -219,6 +219,7 @@ def crear_valoracion_desde_lote(
         marca=lote.marca,
         modelo=lote.modelo,
         anio=lote.anio,
+        km=lote.kilometros,
     )
     es_retasacion = similar is not None
 
@@ -267,6 +268,10 @@ def crear_valoracion_desde_lote(
     tt = tarifa_transporte(sesion.proveedor, zona)
     transporte = tt.precio if tt else params.transporte
 
+    es_auto1 = lote.formato == "auto1"
+    iva_anuncio = Decimal(lote.iva_anuncio) if (es_auto1 and lote.iva_anuncio) else Decimal("0")
+    precio_salida = Decimal(lote.precio_subasta) if lote.precio_subasta else Decimal("0")
+
     v = Valoracion.objects.create(
         vehiculo=vehiculo,
         valoracion_anterior=anterior,
@@ -274,9 +279,11 @@ def crear_valoracion_desde_lote(
         proveedor=sesion.proveedor,
         tipo_subasta=tipo,
         ubicacion=sesion.ubicacion,
-        zona_origen=zona,
-        lote_id=lote.lote,
+        zona_origen="" if es_auto1 else zona,
+        lote_id=(lote.referencia if es_auto1 else lote.lote),
         orden_lote=lote.lote_num,
+        iva_anuncio=iva_anuncio,
+        precio_salida=precio_salida,
         fecha_valoracion=timezone.localdate(),
         fecha_subasta=sesion.fecha,
         kilometros=lote.kilometros,

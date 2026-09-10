@@ -431,6 +431,10 @@ class Valoracion(models.Model):
         **DEC, default=Decimal("0"),
         help_text="Solo Auto1: el importe de IVA que muestra el anuncio.",
     )
+    precio_salida = models.DecimalField(
+        **DEC, default=Decimal("0"),
+        help_text="Puja mínima / precio de salida de la subasta.",
+    )
     precio_venta_estimado = models.DecimalField(**DEC)
     precio_anunciado = models.DecimalField(**DEC, null=True, blank=True)
 

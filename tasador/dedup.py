@@ -11,6 +11,7 @@ def buscar_vehiculo_similar(
     marca: str = "",
     modelo: str = "",
     anio: int | None = None,
+    km: int | None = None,
 ) -> Vehiculo | None:
     matricula = (matricula or "").strip().upper().replace(" ", "")
     bastidor = (bastidor or "").strip().upper()
@@ -24,12 +25,22 @@ def buscar_vehiculo_similar(
         if v:
             return v
     if marca and modelo and anio:
-        v = (
-            Vehiculo.objects.filter(
-                marca__iexact=marca, modelo__iexact=modelo, anio=anio
-            )
-            .first()
+        qs = Vehiculo.objects.filter(
+            marca__iexact=marca, modelo__iexact=modelo, anio=anio
         )
+        if km:
+            # mismo coche si los km están dentro de ±5 % (o ±2.000)
+            margen = max(int(km * 0.05), 2000)
+            qs_km = qs.filter(
+                km_ultimo_conocido__gte=km - margen,
+                km_ultimo_conocido__lte=km + margen,
+            )
+            if qs_km.exists():
+                return qs_km.first()
+            if qs.filter(km_ultimo_conocido__isnull=True).exists():
+                return qs.filter(km_ultimo_conocido__isnull=True).first()
+            return None
+        v = qs.first()
         if v:
             return v
     return None

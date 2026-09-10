@@ -1,5 +1,27 @@
 """Pruebas del parser del texto de la extensión de Chrome."""
-from tasador.parser import parsear_linea, parsear_texto
+from tasador.parser import parsear_linea, parsear_linea_auto1, parsear_texto
+
+AUTO1 = "Volkswagen Golf VII 2.0 TSI R 4Motion BlueMotion Tech\t19090\t307,02\tAP63011\t2016\t114775\tGasolina\tDoble embrague"
+
+
+def test_auto1_linea():
+    r = parsear_linea_auto1(AUTO1)
+    assert r.formato == "auto1"
+    assert r.marca == "Volkswagen"
+    assert r.modelo == "Golf"
+    assert "2.0 TSI R" in r.version
+    assert r.precio_subasta == 19090
+    assert r.iva_anuncio == "307.02"  # coma -> punto
+    assert r.referencia == "AP63011"
+    assert r.anio == 2016
+    assert r.kilometros == 114775
+    assert r.combustible == "gasolina"
+    assert r.cambio == "automatico"  # "Doble embrague"
+
+
+def test_auto1_via_parsear_texto():
+    out = parsear_texto(AUTO1 + "\n" + AUTO1, formato="auto1")
+    assert len(out) == 2 and all(x.formato == "auto1" for x in out)
 
 LINEA = "3\tCitroën C1 C1 1.0 VTI FEEL 72\t53 KW (72 CV), Gasolina, Manual, 79328 Km, 2019\t9553LDF\t17/12/2019\tBCA Madrid"
 
