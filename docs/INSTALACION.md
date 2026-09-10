@@ -45,18 +45,21 @@ ni Docker para desarrollar.
    | `SESSION_COOKIE_SECURE` | `True` |
    | `CSRF_COOKIE_SECURE` | `True` |
    | `SECURE_HSTS_SECONDS` | `2592000` (solo con el dominio definitivo; nunca en localhost) |
+   | `DJANGO_SUPERUSER_USERNAME` | `admin` |
+   | `DJANGO_SUPERUSER_EMAIL` | tu email |
+   | `DJANGO_SUPERUSER_PASSWORD` | una contraseña fuerte |
 
 6. **Dominios**: añade el subdominio; EasyPanel emite el certificado SSL solo.
 7. **Volúmenes**: monta un volumen persistente en `/app/media` y otro en
    `/app/backups`.
 
-El contenedor ejecuta `python manage.py migrate` en cada arranque. La primera
-vez, abre la consola del servicio en EasyPanel y ejecuta:
+En cada arranque el contenedor ejecuta, de forma idempotente:
+`migrate` → `seed_datos` (datos de BCA) → `crear_admin` (superusuario desde las
+variables `DJANGO_SUPERUSER_*`). **No hace falta tocar la consola**: define esas
+3 variables y, al desplegar, ya puedes entrar con ese usuario.
 
-```bash
-python manage.py seed_datos
-python manage.py createsuperuser
-```
+Para cambiar la contraseña más adelante: cambia `DJANGO_SUPERUSER_PASSWORD` y
+vuelve a desplegar, o desde la consola `python manage.py changepassword admin`.
 
 ### 2.3 Auto-deploy
 

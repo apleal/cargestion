@@ -19,5 +19,6 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-# migrate en el arranque y luego gunicorn
-CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
+# En cada arranque: migraciones + datos iniciales (idempotente) + superusuario
+# desde DJANGO_SUPERUSER_* (si están definidos), y luego gunicorn.
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed_datos && python manage.py crear_admin && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
