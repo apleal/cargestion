@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Panel · Tasador{% endblock %}
+{% block content %}
+<h1>Panel</h1>
+
+<div class="card">
+  <h2>Próximas subastas</h2>
+  {% if proximas %}
+  <div class="tw"><table>
+    <thead><tr><th>Fecha</th><th>Sede</th><th class="num">Lotes</th><th class="num">Interesantes</th><th></th></tr></thead>
+    <tbody>
+      {% for s in proximas %}
+      <tr>
+        <td class="num">{{ s.fecha|date:"d/m/Y" }}</td>
+        <td>{{ s.ubicacion.nombre }}</td>
+        <td class="num">{{ s.n_lotes }}</td>
+        <td class="num">{{ s.n_interesantes }}</td>
+        <td><a href="{% url 'sesion_detalle' s.pk %}">Sala de pujas →</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="mono">Sin subastas previstas. Créalas en <a href="{% url 'admin:tasador_sesionsubasta_add' %}">Configuración</a>.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Resumen</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="n">{{ total_valoraciones }}</div><div class="l">Valoraciones</div></div>
+    <div class="kpi"><div class="n">{{ interesantes }}</div><div class="l">Interesantes</div></div>
+    <div class="kpi"><div class="n">{{ pujados }}</div><div class="l">Pujados</div></div>
+    <div class="kpi"><div class="n">{{ adjudicados }}</div><div class="l">Adjudicados</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Últimas valoraciones</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th>Fecha</th><th>Estado</th><th class="num">Venta</th><th class="num">Puja máx.</th><th class="num">Rent.</th></tr></thead>
+    <tbody>
+      {% for v in ultimas %}
+      <tr>
+        <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
+        <td class="num">{{ v.fecha_valoracion|date:"d/m/y" }}</td>
+        <td>{{ v.estado.nombre }}</td>
+        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
+        <td class="num">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+        <td class="num">{{ v.r_rentabilidad_coste|floatformat:3 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="mono">Aún no hay valoraciones. <a href="{% url 'valoracion_nueva' %}">Crea la primera</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

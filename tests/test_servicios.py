@@ -1,0 +1,77 @@
+"""Pruebas de integración: modelos + motor a través de ``services``."""
+from decimal import Decimal
+
+import pytest
+from django.core.management import call_command
+
+from tasador import models, services
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def datos():
+    call_command("seed_datos")
+
+
+def _valoracion(tipo_nombre="BCA normal", **extra):
+    tipo = models.TipoSubasta.objects.get(nombre=tipo_nombre)
+    estado = models.EstadoValoracion.objects.get(nombre="Interesante")
+    veh = models.Vehiculo.objects.create(matricula="1234ABC", marca="SEAT", modelo="Arona")
+    campos = dict(
+        vehiculo=veh,
+        proveedor=tipo.proveedor,
+        tipo_subasta=tipo,
+        estado=estado,
+        precio_venta_estimado=Decimal("15000"),
+        piezas_pintura=4,
+        coste_alberto=Decimal("50"),
+        coste_gasolina=Decimal("40"),
+        coste_pintura_por_pieza=Decimal("87"),
+        coste_garantia=Decimal("225"),
+        coste_mecanica=Decimal("200"),
+        coste_cambio_titularidad=Decimal("72"),
+        coste_transporte=Decimal("350"),
+    )
+    campos.update(extra)
+    return models.Valoracion.objects.create(**campos)
+
+
+def test_seed_crea_bca_y_tarifa(datos):
+    bca = models.Proveedor.objects.get(nombre="BCA")
+    tarifa = services.tarifa_vigente(bca)
+    assert tarifa is not None
+    assert tarifa.tramos.count() == 17
+    assert tarifa.validar_tramos() == []
+
+
+def test_recalcular_guarda_puja_maxima(datos):
+    v = _valoracion()
+    services.recalcular_y_guardar(v)
+    v.refresh_from_db()
+    assert v.r_puja_maxima_principal is not None
+    assert Decimal("10000") < v.r_puja_maxima_principal < Decimal("11000")
+    assert v.r_beneficio_neto > 0
+    assert v.tarifa_comision_aplicada is not None
+    assert any(k.startswith("0.15") for k in v.r_escenarios)
+
+
+def test_concurso_usa_cuota_plana(datos):
+    v = _valoracion(tipo_nombre="Concurso BCA")
+    res = services.calcular(v, puja=Decimal("10000"))
+    assert res.desglose_para_puja.coste_adquisicion == Decimal("10351.00")
+
+
+def test_tarifa_versionada_no_afecta_valoracion_antigua(datos):
+    """Cambiar la tarifa después no altera el snapshot guardado."""
+    v = _valoracion()
+    services.recalcular_y_guardar(v)
+    puja_antes = v.r_puja_maxima_principal
+
+    tarifa = services.tarifa_vigente(models.Proveedor.objects.get(nombre="BCA"))
+    tramo = tarifa.tramos.get(importe_desde=Decimal("10000"))
+    tramo.cuota_fija = Decimal("999")
+    tramo.save()
+
+    v.refresh_from_db()
+    assert v.r_puja_maxima_principal == puja_antes  # no se recalcula solo

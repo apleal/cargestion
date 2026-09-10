@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Valoraciones · Tasador{% endblock %}
+{% block content %}
+<h1>Valoraciones</h1>
+<div class="card">
+  <form method="get" style="margin-bottom:12px">
+    <label>Estado</label>
+    <select name="estado" onchange="this.form.submit()" style="max-width:240px">
+      <option value="">Todos</option>
+      {% for e in estados %}<option value="{{ e.nombre }}" {% if request.GET.estado == e.nombre %}selected{% endif %}>{{ e.nombre }}</option>{% endfor %}
+    </select>
+  </form>
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Coche</th><th>Subasta</th><th>Lote</th><th>Estado</th>
+      <th class="num">Venta</th><th class="num">Puja máx.</th><th class="num">Beneficio</th><th class="num">Rent.</th>
+    </tr></thead>
+    <tbody>
+      {% for v in valoraciones %}
+      <tr>
+        <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
+        <td>{% if v.sesion_subasta %}{{ v.sesion_subasta }}{% else %}—{% endif %}</td>
+        <td class="num">{{ v.lote_id }}</td>
+        <td>{{ v.estado.nombre }}</td>
+        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
+        <td class="num">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+        <td class="num">{{ v.r_beneficio_neto|floatformat:0|intcomma }} €</td>
+        <td class="num">{{ v.r_rentabilidad_coste|floatformat:3 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="mono">Sin valoraciones.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

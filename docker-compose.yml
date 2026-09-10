@@ -1,0 +1,27 @@
+# Solo para probar en local con PostgreSQL. En EasyPanel se usan servicios propios.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: cargestion
+      POSTGRES_USER: cargestion
+      POSTGRES_PASSWORD: cargestion
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  web:
+    build: .
+    environment:
+      SECRET_KEY: dev-local
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgres://cargestion:cargestion@db:5432/cargestion
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

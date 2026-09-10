@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Sala de pujas · {{ sesion }}{% endblock %}
+{% block content %}
+<h1>Sala de pujas</h1>
+<p class="mono">{{ sesion.ubicacion.nombre }} · {{ sesion.fecha|date:"d/m/Y" }}
+  · {{ sesion.hora_inicio }}–{{ sesion.hora_fin }}
+  · {{ lotes|length }} lotes
+  {% if sesion.url %}· <a href="{{ sesion.url }}" target="_blank" rel="noopener">venta en BCA ↗</a>{% endif %}</p>
+
+<div class="card">
+  <div class="tw"><table>
+    <thead><tr>
+      <th class="num">Lote</th><th>Coche</th><th class="num">Venta</th>
+      <th class="num">Puja máx.</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for v in lotes %}
+      <tr>
+        <td class="num">{{ v.lote_id|default:v.orden_lote }}</td>
+        <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
+        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
+        <td class="num">{% if v.r_puja_maxima_principal %}<b>{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €</b>{% else %}—{% endif %}</td>
+        <td>{{ v.estado.nombre }}</td>
+        <td><a href="{% url 'valoracion_editar' v.pk %}">abrir</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="mono">Sin lotes. Añádelos con <a href="{% url 'pegar_lotes' %}">Pegar lotes</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<p><a href="javascript:window.print()">Imprimir esta lista</a></p>
+{% endblock %}

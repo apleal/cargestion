@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Pegar lotes · Tasador{% endblock %}
+{% block content %}
+<h1>Pegar lotes de la extensión</h1>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="primary">Previsualizar</button>
+  </form>
+</div>
+
+{% if preview %}
+<div class="card">
+  <h2>Previsualización ({{ preview|length }} líneas)</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Lote</th><th>Coche</th><th>Matrícula</th><th>CV</th><th>Km</th><th>Año</th><th>Avisos</th></tr></thead>
+    <tbody>
+      {% for p in preview %}
+      <tr>
+        <td class="num">{{ p.lote }}</td>
+        <td>{{ p.marca }} {{ p.modelo }} <span class="mono" style="color:var(--ink-soft)">{{ p.version }}</span></td>
+        <td class="mono">{{ p.matricula }}</td>
+        <td class="num">{{ p.potencia_cv|default:"—" }}</td>
+        <td class="num">{{ p.kilometros|default:"—" }}</td>
+        <td class="num">{{ p.anio|default:"—" }}</td>
+        <td>
+          {% if p.similar %}<span class="pill no">ya conocido</span>{% endif %}
+          {% for d in p.dudosos %}<span class="pill">{{ d }}?</span>{% endfor %}
+          {% for n in p.no_reconocidos %}<span class="pill">{{ n }}</span>{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="mono" style="color:var(--ink-soft)">La creación de valoraciones desde esta previsualización llega en la Etapa 2. De momento sirve para comprobar el parser.</p>
+</div>
+{% endif %}
+{% endblock %}

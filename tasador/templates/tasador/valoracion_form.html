@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{% if valoracion %}Valoración{% else %}Nueva valoración{% endif %} · Tasador{% endblock %}
+{% block content %}
+<h1>{% if valoracion %}{{ valoracion.vehiculo }}{% else %}Nueva valoración{% endif %}</h1>
+
+<form method="post" id="valForm">
+  {% csrf_token %}
+  <div class="grid-form">
+    <div>
+      <div class="card">
+        <h2>Datos</h2>
+        {% if not valoracion %}
+        <div class="costs-grid">
+          <p><label>Matrícula</label><input name="v_matricula" value="{{ vehiculo.matricula }}"></p>
+          <p><label>Marca</label><input name="v_marca" value="{{ vehiculo.marca }}"></p>
+          <p><label>Modelo</label><input name="v_modelo" value="{{ vehiculo.modelo }}"></p>
+          <p><label>Versión</label><input name="v_version" value="{{ vehiculo.version }}"></p>
+        </div>
+        {% endif %}
+        {{ form.non_field_errors }}
+        <div class="costs-grid">
+          <p><label>Proveedor</label>{{ form.proveedor }}</p>
+          <p><label>Tipo de subasta</label>{{ form.tipo_subasta }}</p>
+          <p><label>Subasta (sesión)</label>{{ form.sesion_subasta }}</p>
+          <p><label>Ubicación</label>{{ form.ubicacion }}</p>
+          <p><label>Lote</label>{{ form.lote_id }}</p>
+          <p><label>Orden lote</label>{{ form.orden_lote }}</p>
+          <p><label>Régimen fiscal</label>{{ form.regimen_fiscal }}</p>
+          <p><label>Estado</label>{{ form.estado }}</p>
+          <p><label>Precio de venta estimado (€)</label>{{ form.precio_venta_estimado }}</p>
+          <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
+          <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>
+          <p><label>Piezas de pintura</label>{{ form.piezas_pintura }}</p>
+          <p><label>Fecha valoración</label>{{ form.fecha_valoracion }}</p>
+          <p><label>Fecha subasta</label>{{ form.fecha_subasta }}</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Costes de preparación · € sin IVA</h2>
+        <div class="costs-grid">
+          <p><label>Mi comisión (Alberto)</label>{{ form.coste_alberto }}</p>
+          <p><label>Gasolina</label>{{ form.coste_gasolina }}</p>
+          <p><label>Pintura · por pieza</label>{{ form.coste_pintura_por_pieza }}</p>
+          <p><label>Garantía</label>{{ form.coste_garantia }}</p>
+          <p><label>Mecánica</label>{{ form.coste_mecanica }}</p>
+          <p><label>Cambio de titularidad</label>{{ form.coste_cambio_titularidad }}</p>
+          <p><label>Transporte</label>{{ form.coste_transporte }}</p>
+          <p><label>ITV</label>{{ form.coste_itv }}</p>
+          <p><label>Tapicería</label>{{ form.coste_tapiceria }}</p>
+          <p><label>Tintado</label>{{ form.coste_tintado }}</p>
+          <p><label>Otros</label>{{ form.coste_otros }}</p>
+        </div>
+        <p><label>Observaciones</label>{{ form.observaciones }}</p>
+        <button type="submit" class="primary">Guardar valoración</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Puja máxima por objetivo</h2>
+        <div class="scn" id="scn"></div>
+        <h2>Desglose de una puja</h2>
+        <p><label>Puja (€)</label><input type="number" id="puja" step="50" value="{{ valoracion.r_puja_maxima_principal|default:'' }}"></p>
+        <table class="bd"><tbody id="bd"></tbody></table>
+        <p id="veredicto" class="pill"></p>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var form = document.getElementById('valForm');
+  var url = "{% url 'calcular_api' %}";
+  var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  var scn = document.getElementById('scn');
+  var bd = document.getElementById('bd');
+  var pujaIn = document.getElementById('puja');
+  var veredicto = document.getElementById('veredicto');
+  var t = null;
+
+  function nf(x){ try { return new Intl.NumberFormat('es-ES',{minimumFractionDigits:2}).format(parseFloat(x)); } catch(e){ return x; } }
+
+  function campos(){
+    var d = new FormData();
+    ['tipo_subasta','regimen_fiscal','precio_venta_estimado','piezas_pintura',
+     'descuento_comision_pct','coste_alberto','coste_gasolina','coste_pintura_por_pieza',
+     'coste_garantia','coste_mecanica','coste_cambio_titularidad','coste_transporte',
+     'coste_itv','coste_tapiceria','coste_tintado','coste_otros'].forEach(function(n){
+      var el = form.querySelector('[name="'+n+'"]');
+      if(el) d.append(n, el.value);
+    });
+    if(pujaIn.value) d.append('puja', pujaIn.value);
+    return d;
+  }
+
+  function pintarEscenarios(escs){
+    scn.innerHTML = '';
+    escs.forEach(function(e, i){
+      var s = document.createElement('div');
+      s.className = 's' + (i===0 ? ' principal' : '');
+      if(!e.puja_maxima){
+        s.innerHTML = '<div class="g">'+e.objetivo+'</div><div class="b neg">n/d</div>'+
+          '<div class="m">no se alcanza</div>';
+      } else {
+        s.innerHTML = '<div class="g">'+e.objetivo+' rent.</div>'+
+          '<div class="b">'+nf(e.puja_maxima)+' €</div>'+
+          '<div class="m">Beneficio <b>'+nf(e.beneficio_neto)+' €</b><br>'+
+          'Margen s/venta <b>'+e.margen_venta+'</b></div>';
+      }
+      s.style.cursor = 'pointer';
+      s.addEventListener('click', function(){ if(e.puja_maxima){ pujaIn.value = Math.round(parseFloat(e.puja_maxima)); recalc(); } });
+      scn.appendChild(s);
+    });
+  }
+
+  function fila(k,v,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+k+'</td><td>'+v+'</td></tr>'; }
+
+  function pintarDesglose(d){
+    if(!d){ bd.innerHTML=''; veredicto.textContent=''; return; }
+    bd.innerHTML =
+      fila('Adjudicación (puja)', nf(d.puja)+' €') +
+      fila('+ Comisión subasta ('+d.tramo+', c/IVA)', nf(d.comision_coste)+' €') +
+      fila('+ Gestión + tasa', nf(d.conceptos_fijos)+' €') +
+      fila('= Coste de adquisición', nf(d.coste_adquisicion)+' €','sum') +
+      fila('+ Preparación', nf(d.gastos_preparacion)+' €') +
+      fila('= Coste total desembolsado', nf(d.coste_total)+' €','grand') +
+      fila('Margen bruto (venta − adquisición)', nf(d.margen_bruto)+' €') +
+      fila('− IVA REBU (21/121)', '−'+nf(d.iva_rebu)+' €') +
+      fila('= Margen neto', nf(d.margen_neto)+' €','sum') +
+      fila('− Preparación', '−'+nf(d.gastos_preparacion)+' €') +
+      fila('= Beneficio neto', nf(d.beneficio_neto)+' €','grand');
+    var ok = parseFloat(d.rentabilidad_coste) >= 0;
+    veredicto.className = 'pill ' + (d.rentabilidad_coste.indexOf('-')===0 ? 'no' : 'ok');
+    veredicto.textContent = d.rentabilidad_coste + ' rentabilidad sobre coste · ' + d.margen_venta + ' sobre venta';
+  }
+
+  function recalc(){
+    fetch(url, {method:'POST', body:campos(), headers:{'X-CSRFToken':csrf}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j.error){ scn.innerHTML = '<div class="s neg">'+j.error+'</div>'; return; }
+        pintarEscenarios(j.escenarios);
+        pintarDesglose(j.desglose);
+      })
+      .catch(function(){});
+  }
+  function debounced(){ clearTimeout(t); t = setTimeout(recalc, 250); }
+
+  form.addEventListener('input', debounced);
+  pujaIn.addEventListener('input', debounced);
+  recalc();
+})();
+</script>
+{% endblock %}

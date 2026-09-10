@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Acceso · Tasador{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>Acceso</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="primary">Entrar</button>
+  </form>
+</div>
+{% endblock %}
