@@ -1,4 +1,5 @@
 from django import forms
+from django.utils import timezone
 
 from . import models
 
@@ -63,12 +64,33 @@ class ValoracionForm(forms.ModelForm):
                 self.fields["proveedor"].initial = tipo.proveedor_id
 
 
+class SesionSubastaForm(forms.ModelForm):
+    class Meta:
+        model = models.SesionSubasta
+        fields = ["proveedor", "ubicacion", "fecha", "hora_inicio", "hora_fin",
+                  "identificador_venta", "url", "notas"]
+        widgets = {
+            "fecha": forms.DateInput(attrs={"type": "date"}),
+            "hora_inicio": forms.TimeInput(attrs={"type": "time"}),
+            "hora_fin": forms.TimeInput(attrs={"type": "time"}),
+            "notas": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            bca = models.Proveedor.objects.filter(nombre="BCA").first()
+            if bca:
+                self.fields["proveedor"].initial = bca.pk
+                self.fields["ubicacion"].queryset = bca.ubicaciones.filter(activa=True)
+            self.fields["fecha"].initial = timezone.localdate()
+
+
 class PegarLotesForm(forms.Form):
-    sesion_subasta = forms.ModelChoiceField(
-        queryset=models.SesionSubasta.objects.all(), required=False,
-        label="Añadir a la subasta",
-    )
     texto = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 6, "placeholder": "Pega aquí una o varias líneas de la extensión…"}),
-        label="Texto de la extensión",
+        widget=forms.Textarea(attrs={
+            "rows": 8,
+            "placeholder": "Pega aquí las líneas del scraper (una por coche, tal cual salen del portapapeles)…",
+        }),
+        label="Pegar del portapapeles",
     )

@@ -5,24 +5,28 @@
 <h1>Panel</h1>
 
 <div class="card">
-  <h2>Próximas subastas</h2>
+  <div class="sesion-head">
+    <h2>Próximas subastas</h2>
+    <a class="btn primary" href="{% url 'sesion_nueva' %}">Nueva subasta</a>
+  </div>
   {% if proximas %}
   <div class="tw"><table>
-    <thead><tr><th>Fecha</th><th>Sede</th><th class="num">Lotes</th><th class="num">Interesantes</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Sede</th><th class="num">Lotes</th><th class="num">Interesantes</th><th class="num">Sin valorar</th><th></th></tr></thead>
     <tbody>
       {% for s in proximas %}
       <tr>
         <td class="num">{{ s.fecha|date:"d/m/Y" }}</td>
-        <td>{{ s.ubicacion.nombre }}</td>
+        <td><a href="{% url 'sesion_detalle' s.pk %}">{{ s.ubicacion.nombre }}</a></td>
         <td class="num">{{ s.n_lotes }}</td>
         <td class="num">{{ s.n_interesantes }}</td>
-        <td><a href="{% url 'sesion_detalle' s.pk %}">Sala de pujas →</a></td>
+        <td class="num">{{ s.n_sin_valorar }}</td>
+        <td><a href="{% url 'sesion_sala' s.pk %}">Sala →</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table></div>
   {% else %}
-  <p class="mono">Sin subastas previstas. Créalas en <a href="{% url 'admin:tasador_sesionsubasta_add' %}">Configuración</a>.</p>
+  <p class="mono">Sin subastas previstas. <a href="{% url 'sesion_nueva' %}">Crea una</a>.</p>
   {% endif %}
 </div>
 

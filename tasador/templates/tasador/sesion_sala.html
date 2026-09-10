@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Sala de pujas · {{ sesion }}{% endblock %}
+{% block content %}
+<div class="sesion-head">
+  <div>
+    <h1>Sala de pujas</h1>
+    <p class="mono">{{ sesion.ubicacion.nombre }} · {{ sesion.fecha|date:"d/m/Y" }}
+      · {{ sesion.hora_inicio|time:"H:i" }}–{{ sesion.hora_fin|time:"H:i" }} · {{ lotes|length }} lotes</p>
+  </div>
+  <div class="acciones">
+    <input id="buscarLote" placeholder="Ir a lote nº…" inputmode="numeric" style="max-width:130px">
+    <a class="btn" href="{% url 'sesion_detalle' sesion.pk %}">Volver a la rejilla</a>
+    <a class="btn" href="javascript:window.print()">Imprimir</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="tw"><table class="rejilla sala">
+    <thead><tr>
+      <th>Lote</th><th>Coche</th><th class="num">Venta</th>
+      <th class="num destacado">Puja 15%</th><th class="num">Puja 12%</th>
+      <th>Estado</th>
+    </tr></thead>
+    <tbody>
+      {% for v in lotes %}
+      <tr id="lote-{{ v.orden_lote|default:v.lote_id }}">
+        <td class="num big">{{ v.orden_lote|default:v.lote_id }}</td>
+        <td class="coche"><b>{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</b> <span class="ver">{{ v.vehiculo.version }}</span><br>
+          <span class="mono">{{ v.vehiculo.matricula }} · {{ v.kilometros|intcomma }} km</span></td>
+        <td class="num mono">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
+        <td class="num destacado big">{% if v.r_puja_maxima_principal %}{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €{% else %}—{% endif %}</td>
+        <td class="num mono">{{ v.puja_12 }}</td>
+        <td>{{ v.estado.nombre }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="mono">Sin lotes.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('buscarLote').addEventListener('keydown', function(e){
+  if(e.key !== 'Enter') return;
+  var el = document.getElementById('lote-' + this.value.trim());
+  if(el){ el.scrollIntoView({block:'center'}); el.classList.add('recalc'); }
+});
+</script>
+{% endblock %}

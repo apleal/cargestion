@@ -86,3 +86,49 @@ button.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;pa
 
 .login-box{max-width:340px;margin:8vh auto;background:var(--surface);border:1px solid var(--line);
   border-radius:var(--radius);padding:26px}
+
+/* subastas / rejilla tipo Excel */
+.sesion-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.sesion-head h1,.sesion-head h2{margin:0}
+.acciones{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-block;text-decoration:none;border:1px solid var(--line-strong);border-radius:7px;
+  padding:7px 13px;color:var(--ink-soft);font-size:.88rem;background:var(--surface)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn:hover{border-color:var(--accent)}
+
+details.pegar{padding:0}
+details.pegar summary{cursor:pointer;padding:14px 16px;font-weight:600;font-size:.92rem}
+details.pegar[open] summary{border-bottom:1px solid var(--line)}
+details.pegar form{padding:14px 16px}
+details.pegar textarea{min-height:120px;font-family:"IBM Plex Mono",monospace;font-size:.82rem}
+.ayuda{color:var(--ink-soft);font-size:.78rem;margin:6px 0}
+
+.grid-wrap{max-height:70vh;overflow:auto}
+table.rejilla{font-size:.83rem;border-collapse:separate;border-spacing:0}
+table.rejilla th{position:sticky;top:0;z-index:2;background:var(--surface-2);white-space:nowrap}
+table.rejilla th,table.rejilla td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:4px 8px}
+table.rejilla th.destacado,table.rejilla td.destacado{background:var(--accent-soft)}
+table.rejilla td.destacado{font-weight:700;color:var(--accent-ink);font-family:"IBM Plex Mono",monospace}
+table.rejilla .coche a{text-decoration:none;font-weight:600}
+table.rejilla .coche .ver{color:var(--ink-faint);font-size:.76rem;display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.rejilla input.celda,table.rejilla select.celda{
+  width:100%;min-width:70px;border:1px solid transparent;background:transparent;padding:4px 5px;
+  font-family:"IBM Plex Mono",monospace;font-size:.82rem;border-radius:5px}
+table.rejilla input.celda:hover,table.rejilla select.celda:hover{border-color:var(--line-strong)}
+table.rejilla input.celda:focus,table.rejilla select.celda:focus{border-color:var(--accent);background:var(--surface);outline:none}
+table.rejilla input.mini{min-width:52px;text-align:right}
+table.rejilla input.venta{text-align:right;font-weight:600}
+table.rejilla select.celda{font-family:"IBM Plex Sans",sans-serif;min-width:120px}
+table.rejilla .celda.guardando{opacity:.5}
+table.rejilla .celda.err{border-color:var(--warn);background:var(--warn-soft)}
+table.rejilla tr.recalc td{background:var(--good-soft);transition:background .1s}
+table.rejilla td.vacio,table.rejilla .vacio{padding:20px;color:var(--ink-soft);border-right:0}
+
+table.rejilla.sala td.big{font-size:1.15rem;font-weight:700;font-family:"IBM Plex Mono",monospace}
+table.rejilla.sala td{padding:9px 12px}
+
+@media print{
+  .topbar,.acciones,.messages,.pegar{display:none}
+  .card{border:0;box-shadow:none;padding:0}
+  .grid-wrap{max-height:none;overflow:visible}
+}

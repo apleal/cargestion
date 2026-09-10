@@ -14,9 +14,9 @@
   <a href="{% url 'panel' %}" class="brand">Tasador <span>· cargestion</span></a>
   <nav>
     <a href="{% url 'panel' %}">Panel</a>
+    <a href="{% url 'sesion_lista' %}">Subastas</a>
+    <a href="{% url 'sesion_nueva' %}">Nueva subasta</a>
     <a href="{% url 'valoracion_lista' %}">Valoraciones</a>
-    <a href="{% url 'valoracion_nueva' %}">Nueva</a>
-    <a href="{% url 'pegar_lotes' %}">Pegar lotes</a>
     <a href="{% url 'admin:index' %}">Configuración</a>
   </nav>
   <form method="post" action="{% url 'logout' %}" class="logout">

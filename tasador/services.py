@@ -9,14 +9,22 @@ from django.utils import timezone
 from calculo import ConfigProveedor, EntradaValoracion, Tramo, escenarios, evaluar
 from calculo.motor import puja_maxima
 
+from .dedup import buscar_vehiculo_similar
 from .models import (
     ConceptoFijo,
     EscenarioObjetivo,
+    EstadoCarroceria,
+    EstadoValoracion,
+    ParametrosCoste,
     Proveedor,
+    SesionSubasta,
     TarifaComision,
     TipoSubasta,
+    Ubicacion,
     Valoracion,
+    Vehiculo,
 )
+from .parser import LoteParseado
 
 
 def _conceptos_fijos_vigentes(proveedor: Proveedor, fecha=None) -> Decimal:
@@ -135,6 +143,94 @@ def calcular(v: Valoracion, puja: Decimal | None = None) -> ResultadoCalculo:
     escs = escenarios(config, entrada, tuple(objetivos_activos()))
     desglose = evaluar(config, entrada, puja) if puja is not None else None
     return ResultadoCalculo(entrada=entrada, desglose_para_puja=desglose, escenarios=escs)
+
+
+def crear_valoracion_desde_lote(
+    lote: LoteParseado,
+    sesion: SesionSubasta,
+    usuario=None,
+) -> tuple[Valoracion, bool]:
+    """Crea un vehículo + valoración a partir de una línea parseada.
+
+    Devuelve (valoracion, era_retasacion). Enlaza con la valoración anterior si
+    el vehículo ya se conocía.
+    """
+    similar = buscar_vehiculo_similar(
+        matricula=lote.matricula,
+        marca=lote.marca,
+        modelo=lote.modelo,
+        anio=lote.anio,
+    )
+    es_retasacion = similar is not None
+
+    if similar:
+        vehiculo = similar
+        # actualiza kilómetros / datos si venían vacíos
+        if lote.kilometros:
+            vehiculo.km_ultimo_conocido = lote.kilometros
+        vehiculo.save()
+    else:
+        vehiculo = Vehiculo.objects.create(
+            matricula=lote.matricula,
+            marca=lote.marca,
+            modelo=lote.modelo,
+            version=lote.version,
+            potencia_kw=lote.potencia_kw,
+            potencia_cv=lote.potencia_cv,
+            combustible=lote.combustible or "",
+            cambio=lote.cambio or "",
+            fecha_primera_matriculacion=lote.fecha_matriculacion or None,
+            anio=lote.anio,
+            km_ultimo_conocido=lote.kilometros,
+        )
+
+    tipo = (
+        TipoSubasta.objects.filter(
+            proveedor=sesion.proveedor, es_predeterminado=True
+        ).first()
+        or TipoSubasta.objects.filter(proveedor=sesion.proveedor).first()
+    )
+    estado_pdte = EstadoValoracion.objects.filter(
+        nombre="Pendiente de valorar"
+    ).first() or EstadoValoracion.objects.order_by("orden").first()
+    carroceria = EstadoCarroceria.objects.filter(nombre="Estado normal").first()
+    params = ParametrosCoste.vigentes()
+
+    anterior = (
+        vehiculo.valoraciones.order_by("-fecha_valoracion", "-created_at").first()
+        if es_retasacion
+        else None
+    )
+
+    v = Valoracion.objects.create(
+        vehiculo=vehiculo,
+        valoracion_anterior=anterior,
+        sesion_subasta=sesion,
+        proveedor=sesion.proveedor,
+        tipo_subasta=tipo,
+        ubicacion=sesion.ubicacion,
+        lote_id=lote.lote,
+        orden_lote=lote.lote_num,
+        fecha_valoracion=timezone.localdate(),
+        fecha_subasta=sesion.fecha,
+        kilometros=lote.kilometros,
+        precio_venta_estimado=Decimal("0"),
+        estado_carroceria=carroceria,
+        piezas_pintura=carroceria.piezas_estimadas if carroceria else 4,
+        coste_alberto=params.comision_alberto,
+        coste_gasolina=params.gasolina,
+        coste_pintura_por_pieza=params.pintura_por_pieza,
+        coste_garantia=params.garantia,
+        coste_mecanica=params.mecanica,
+        coste_cambio_titularidad=params.cambio_titularidad,
+        coste_transporte=params.transporte,
+        coste_itv=params.itv,
+        estado=estado_pdte,
+        creado_por=usuario,
+        observaciones=f"Importado: {lote.texto_original[:200]}",
+    )
+    recalcular_y_guardar(v)
+    return v, es_retasacion
 
 
 def recalcular_y_guardar(v: Valoracion) -> Valoracion:

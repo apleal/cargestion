@@ -50,6 +50,7 @@ _CAMBIO = {
 class LoteParseado:
     texto_original: str
     lote: str = ""
+    lote_num: int | None = None
     marca: str = ""
     modelo: str = ""
     version: str = ""
@@ -84,6 +85,9 @@ def parsear_linea(linea: str) -> LoteParseado:
     r.lote = datos.get("lote", "").strip()
     if not r.lote or not re.match(r"^[\w-]+$", r.lote):
         r.dudosos.append("lote")
+    m_lote = re.search(r"\d+", r.lote)
+    if m_lote:
+        r.lote_num = int(m_lote.group())
 
     modelo_completo = datos.get("modelo_completo", "").strip()
     if modelo_completo:

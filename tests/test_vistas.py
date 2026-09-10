@@ -54,8 +54,51 @@ def test_calcular_api_devuelve_escenarios(cliente):
     assert data["desglose"]["coste_adquisicion"] == "10643.48"
 
 
-def test_pegar_lotes_previsualiza(cliente):
-    linea = "3\tCitroën C1 C1 1.0 VTI FEEL 72\t53 KW (72 CV), Gasolina, Manual, 79328 Km, 2019\t9553LDF\t17/12/2019\tBCA Madrid"
-    resp = cliente.post(reverse("pegar_lotes"), {"texto": linea})
+LINEA = "3\tCitroën C1 C1 1.0 VTI FEEL 72\t53 KW (72 CV), Gasolina, Manual, 79328 Km, 2019\t9553LDF\t17/12/2019\tBCA Madrid"
+
+
+def _sesion():
+    from tasador.models import Proveedor, SesionSubasta
+    bca = Proveedor.objects.get(nombre="BCA")
+    return SesionSubasta.objects.create(
+        proveedor=bca,
+        ubicacion=bca.ubicaciones.first(),
+        fecha="2026-09-15",
+    )
+
+
+def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    resp = cliente.post(
+        reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA + "\n" + LINEA.replace("\t3\t", "\t1\t")}
+    )
+    assert resp.status_code == 302
+    assert Valoracion.objects.filter(sesion_subasta=s).count() == 2
+
+    rejilla = cliente.get(reverse("sesion_detalle", args=[s.pk]))
+    assert rejilla.status_code == 200
+    assert b"Citro" in rejilla.content
+    # ordenadas por lote: la 2 (lote 3) despues de la 1 (lote 1)... comprobamos que hay orden
+    contenido = rejilla.content.decode()
+    assert contenido.index("9553LDF") >= 0
+
+
+def test_celda_update_recalcula_puja(cliente):
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.filter(sesion_subasta=s).first()
+
+    resp = cliente.post(
+        reverse("celda_update", args=[v.pk]),
+        {"campo": "precio_venta_estimado", "valor": "9000"},
+    )
     assert resp.status_code == 200
-    assert b"Citro" in resp.content
+    data = resp.json()
+    assert data["puja_15"] is not None
+    v.refresh_from_db()
+    assert v.precio_venta_estimado == 9000
+    assert v.r_puja_maxima_principal is not None

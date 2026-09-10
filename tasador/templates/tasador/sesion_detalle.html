@@ -1,34 +1,137 @@
 {% extends "base.html" %}
 {% load humanize %}
-{% block title %}Sala de pujas · {{ sesion }}{% endblock %}
+{% block title %}{{ sesion }} · Tasador{% endblock %}
 {% block content %}
-<h1>Sala de pujas</h1>
-<p class="mono">{{ sesion.ubicacion.nombre }} · {{ sesion.fecha|date:"d/m/Y" }}
-  · {{ sesion.hora_inicio }}–{{ sesion.hora_fin }}
-  · {{ lotes|length }} lotes
-  {% if sesion.url %}· <a href="{{ sesion.url }}" target="_blank" rel="noopener">venta en BCA ↗</a>{% endif %}</p>
+<div class="sesion-head">
+  <div>
+    <h1>{{ sesion.ubicacion.nombre }} · {{ sesion.fecha|date:"d/m/Y" }}</h1>
+    <p class="mono">{{ sesion.proveedor.nombre }} · {{ sesion.hora_inicio|time:"H:i" }}–{{ sesion.hora_fin|time:"H:i" }}
+      · {{ lotes|length }} lote{{ lotes|length|pluralize }}
+      {% if sesion.url %}· <a href="{{ sesion.url }}" target="_blank" rel="noopener">venta en {{ sesion.proveedor.nombre }} ↗</a>{% endif %}</p>
+  </div>
+  <div class="acciones">
+    <a class="btn" href="{% url 'sesion_sala' sesion.pk %}">Sala de pujas</a>
+  </div>
+</div>
+
+<details class="card pegar" {% if not lotes %}open{% endif %}>
+  <summary>Pegar lotes del scraper</summary>
+  <form method="post" action="{% url 'sesion_pegar' sesion.pk %}">
+    {% csrf_token %}
+    {{ pegar_form.texto }}
+    <p class="mono ayuda">Una línea por coche, tal cual sale del portapapeles (lote · modelo · ficha · matrícula · fecha · ubicación).</p>
+    <button type="submit" class="primary">Añadir a la subasta</button>
+  </form>
+</details>
 
 <div class="card">
-  <div class="tw"><table>
-    <thead><tr>
-      <th class="num">Lote</th><th>Coche</th><th class="num">Venta</th>
-      <th class="num">Puja máx.</th><th>Estado</th><th></th>
-    </tr></thead>
-    <tbody>
-      {% for v in lotes %}
-      <tr>
-        <td class="num">{{ v.lote_id|default:v.orden_lote }}</td>
-        <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
-        <td class="num">{{ v.precio_venta_estimado|floatformat:0|intcomma }} €</td>
-        <td class="num">{% if v.r_puja_maxima_principal %}<b>{{ v.r_puja_maxima_principal|floatformat:0|intcomma }} €</b>{% else %}—{% endif %}</td>
-        <td>{{ v.estado.nombre }}</td>
-        <td><a href="{% url 'valoracion_editar' v.pk %}">abrir</a></td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="mono">Sin lotes. Añádelos con <a href="{% url 'pegar_lotes' %}">Pegar lotes</a>.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table></div>
+  <div class="tw grid-wrap">
+    <table class="rejilla">
+      <thead>
+        <tr>
+          <th>Lote</th><th>Coche</th><th>Matrícula</th><th class="num">Km</th>
+          <th class="num">Venta €</th><th>Carrocería</th><th class="num">Piezas</th>
+          <th class="num destacado">Puja 15%</th><th class="num">Puja 12%</th><th class="num">Puja 10%</th>
+          <th class="num">Beneficio</th><th class="num">Rent.</th>
+          <th>Estado</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in lotes %}
+        {% with f=v.fila %}
+        <tr data-row="{{ v.pk }}">
+          <td class="num">
+            <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
+                   value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
+          </td>
+          <td class="coche">
+            <a href="{% url 'vehiculo_detalle' v.vehiculo.pk %}">{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</a>
+            <span class="ver">{{ v.vehiculo.version }}</span>
+            {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
+          </td>
+          <td class="mono">{{ v.vehiculo.matricula }}</td>
+          <td class="num mono">{{ v.kilometros|intcomma }}</td>
+          <td class="num">
+            <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
+                   value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
+          </td>
+          <td>
+            <select class="celda" data-campo="estado_carroceria_id" data-val="{{ v.pk }}">
+              {% for c in carrocerias %}
+              <option value="{{ c.pk }}" {% if v.estado_carroceria_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="num">
+            <input class="celda mini piezas" data-campo="piezas_pintura" data-val="{{ v.pk }}"
+                   value="{{ v.piezas_pintura }}" inputmode="numeric">
+          </td>
+          <td class="num destacado puja-15">{% if f.puja_15 %}{{ f.puja_15|floatformat:0 }} €{% else %}—{% endif %}</td>
+          <td class="num puja-12">{% if f.puja_12 %}{{ f.puja_12|floatformat:0 }} €{% else %}—{% endif %}</td>
+          <td class="num puja-10">{% if f.puja_10 %}{{ f.puja_10|floatformat:0 }} €{% else %}—{% endif %}</td>
+          <td class="num beneficio">{{ f.beneficio|floatformat:0 }} €</td>
+          <td class="num rent">{{ f.rentabilidad }}</td>
+          <td>
+            <select class="celda estado" data-campo="estado_id" data-val="{{ v.pk }}">
+              {% for e in estados %}
+              <option value="{{ e.pk }}" {% if v.estado_id == e.pk %}selected{% endif %}>{{ e.nombre }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td><a class="mono" href="{% url 'valoracion_editar' v.pk %}">costes ›</a></td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="14" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="mono ayuda">Edita <b>Venta</b>, carrocería, piezas o estado y la puja se recalcula sola. Para afinar costes de un coche, abre <b>costes ›</b>.</p>
 </div>
-<p><a href="javascript:window.print()">Imprimir esta lista</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  var plantillaUrl = "{% url 'celda_update' 999999 %}";  // .../valoraciones/999999/celda/
+  function urlCelda(pk){ return plantillaUrl.replace('999999', pk); }
+
+  function nf(x){
+    if(x === null || x === undefined || x === '') return '—';
+    var n = parseFloat(x);
+    if(isNaN(n)) return '—';
+    return new Intl.NumberFormat('es-ES',{maximumFractionDigits:0}).format(Math.round(n)) + ' €';
+  }
+
+  document.querySelectorAll('.celda').forEach(function(el){
+    el.addEventListener('change', function(){
+      var pk = el.dataset.val;
+      var body = new URLSearchParams({campo: el.dataset.campo, valor: el.value});
+      el.classList.add('guardando');
+      fetch(urlCelda(pk), {method:'POST', body: body, headers:{'X-CSRFToken': csrf}})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          el.classList.remove('guardando');
+          if(j.error){ el.classList.add('err'); return; }
+          el.classList.remove('err');
+          var tr = document.querySelector('tr[data-row="'+pk+'"]');
+          tr.querySelector('.puja-15').textContent = nf(j.puja_15);
+          tr.querySelector('.puja-12').textContent = nf(j.puja_12);
+          tr.querySelector('.puja-10').textContent = nf(j.puja_10);
+          tr.querySelector('.beneficio').textContent = nf(j.beneficio);
+          tr.querySelector('.rent').textContent = j.rentabilidad;
+          if(j.piezas_pintura !== undefined){
+            var pz = tr.querySelector('.piezas');
+            if(pz && document.activeElement !== pz) pz.value = j.piezas_pintura;
+          }
+          tr.classList.add('recalc');
+          setTimeout(function(){ tr.classList.remove('recalc'); }, 600);
+        })
+        .catch(function(){ el.classList.remove('guardando'); el.classList.add('err'); });
+    });
+  });
+})();
+</script>
 {% endblock %}
