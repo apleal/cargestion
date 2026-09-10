@@ -23,8 +23,24 @@ if env_file.exists():
 
 SECRET_KEY = env("SECRET_KEY", default="dev-inseguro-cambiar-en-produccion")
 DEBUG = env("DEBUG")
+
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+# EasyPanel expone la app en un subdominio *.easypanel.host antes de que
+# configures tu dominio propio: se autoriza siempre.
+if ".easypanel.host" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".easypanel.host")
+
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS") or []
+CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS)
+if "https://*.easypanel.host" not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append("https://*.easypanel.host")
+# Deriva el origen https de cada host explícito de ALLOWED_HOSTS.
+for _host in ALLOWED_HOSTS:
+    if _host in ("localhost", "127.0.0.1") or _host.startswith("."):
+        continue
+    _origin = f"https://{_host}"
+    if _origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_origin)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
