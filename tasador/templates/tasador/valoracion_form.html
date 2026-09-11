@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tasador_extras %}
 {% block title %}{% if valoracion %}Valoración{% else %}Nueva valoración{% endif %} · Tasador{% endblock %}
 {% block content %}
 <h1>{% if valoracion %}{{ valoracion.vehiculo }}{% else %}Nueva valoración{% endif %}</h1>
@@ -30,7 +31,9 @@
           <p><label>Estado</label>{{ form.estado }}</p>
           <p><label>IVA del anuncio (€) · solo Auto1</label>{{ form.iva_anuncio }}</p>
           <p><label>Precio de salida / puja mínima (€)</label>{{ form.precio_salida }}</p>
-          <p><label>Precio de venta estimado (€)</label>{{ form.precio_venta_estimado }}</p>
+          <p><label>Precio de venta estimado (€)
+              {% if vehiculo %}<a class="buscar-comp-txt" href="{{ vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener">🔍 ver precios parecidos</a>{% endif %}
+            </label>{{ form.precio_venta_estimado }}</p>
           <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
           <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>
           <p><label>Piezas de pintura</label>{{ form.piezas_pintura }}</p>

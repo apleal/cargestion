@@ -89,9 +89,11 @@
           <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>
           <td class="num destacado puja-12">{{ f.puja_12|eur }}</td>
           <td class="num destacado puja-10">{{ f.puja_10|eur }}</td>
-          <td class="num">
+          <td class="num venta-cell">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
+            <a class="buscar-comp" href="{{ v.vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener"
+               title="Buscar precios de coches parecidos">🔍</a>
           </td>
           {% if es_auto1 %}
           <td class="num">

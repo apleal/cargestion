@@ -260,6 +260,27 @@ def test_ficha_auto1_oculta_fechas_y_manda_piezas_por_carroceria(cliente):
     assert f'"{desgastado.pk}":6' in html.replace(" ", "")
 
 
+def test_enlace_buscar_comparables_en_rejilla_y_ficha(cliente):
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"},
+    )
+    v = Valoracion.objects.get(lote_id="PT46293")
+
+    grid = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "google.com/search?q=Opel+Adam+2017" in grid
+
+    ficha = cliente.get(reverse("valoracion_editar", args=[v.pk])).content.decode()
+    assert "google.com/search?q=Opel+Adam+2017" in ficha
+    assert "ver precios parecidos" in ficha
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

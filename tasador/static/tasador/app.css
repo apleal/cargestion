@@ -135,6 +135,18 @@ table.rejilla input.celda:hover,table.rejilla select.celda:hover{border-color:va
 table.rejilla input.celda:focus,table.rejilla select.celda:focus{border-color:var(--accent);background:var(--surface);outline:none}
 table.rejilla input.mini{min-width:52px;text-align:right}
 table.rejilla input.venta{text-align:right;font-weight:600}
+table.rejilla td.venta-cell{display:flex;align-items:center;gap:2px}
+table.rejilla td.venta-cell input.celda{flex:1}
+.buscar-comp{
+  flex:none;text-decoration:none;font-size:.9rem;padding:2px 4px;border-radius:5px;
+  opacity:.7;filter:grayscale(.3);
+}
+.buscar-comp:hover{opacity:1;filter:none;background:var(--surface-2)}
+.buscar-comp-txt{
+  font-size:.72rem;font-weight:400;text-decoration:none;color:var(--accent-ink);
+  margin-left:8px;white-space:nowrap;
+}
+.buscar-comp-txt:hover{text-decoration:underline}
 table.rejilla select.celda{font-family:"IBM Plex Sans",sans-serif;min-width:120px}
 table.rejilla .celda.guardando{opacity:.5}
 table.rejilla .celda.err{border-color:var(--warn);background:var(--warn-soft)}
