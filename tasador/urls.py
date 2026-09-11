@@ -19,4 +19,5 @@ urlpatterns = [
     path("valoraciones/pegar/", views.pegar_lotes, name="pegar_lotes"),
 
     path("vehiculos/<int:pk>/", views.vehiculo_detalle, name="vehiculo_detalle"),
+    path("buscar/", views.buscar_vehiculo, name="buscar_vehiculo"),
 ]

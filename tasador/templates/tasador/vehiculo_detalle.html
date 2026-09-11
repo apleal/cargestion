@@ -5,16 +5,20 @@
 <h1>{{ vehiculo }}</h1>
 <p class="mono">{{ vehiculo.marca }} {{ vehiculo.modelo }} {{ vehiculo.version }}
   · {{ vehiculo.potencia_cv }} CV · {{ vehiculo.combustible }} · {{ vehiculo.anio }}
-  {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|miles }} km{% endif %}</p>
+  {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|miles }} km{% endif %}
+  {% if referencia %}· Ref. Auto1 <b>{{ referencia }}</b>{% endif %}</p>
 
 <div class="card">
-  <h2>Valoraciones ({{ valoraciones|length }})</h2>
+  <h2>Histórico ({{ valoraciones|length }}) · de más antigua a más reciente</h2>
   <div class="tw"><table>
-    <thead><tr><th>Fecha</th><th>Subasta</th><th class="num">Km</th><th class="num">Salida</th><th class="num">Venta</th><th class="num">Puja máx.</th><th>Estado</th></tr></thead>
+    <thead><tr>
+      <th>Fecha</th><th>Subasta</th><th class="num">Km</th><th class="num">Salida</th>
+      <th class="num">Venta</th><th class="num">Puja máx. 15%</th><th>¿Comprable?</th><th>Estado</th>
+    </tr></thead>
     <tbody>
       {% for v in valoraciones %}
-      <tr>
-        <td class="num"><a href="{% url 'valoracion_editar' v.pk %}">{{ v.fecha_valoracion|date:"d/m/Y" }}</a></td>
+      <tr class="{% if v.en_precio %}oportunidad{% endif %}">
+        <td class="num"><a href="{% url 'valoracion_editar' v.pk %}">{{ v.created_at|date:"d/m/Y H:i" }}</a></td>
         <td>{% if v.sesion_subasta %}{{ v.sesion_subasta }}{% else %}—{% endif %}</td>
         <td class="num">{{ v.kilometros|miles }}</td>
         <td class="num">
@@ -23,13 +27,14 @@
         </td>
         <td class="num">{{ v.precio_venta_estimado|eur }}</td>
         <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td>{% if v.en_precio %}<span class="pill ok">✓ sí</span>{% elif v.precio_salida %}<span class="pill no">✗ no</span>{% else %}—{% endif %}</td>
         <td>{{ v.estado.nombre }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table></div>
   {% if valoraciones|length > 1 %}
-  <p class="mono">Retasado {{ valoraciones|length }} veces.</p>
+  <p class="mono ayuda">Retasado {{ valoraciones|length }} veces. La columna "¿Comprable?" compara, en cada momento, el precio de salida real con tu puja máxima al 15&nbsp;% de entonces.</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -152,6 +152,56 @@ def test_en_precio_se_marca_cuando_salida_por_debajo_de_puja(cliente):
     assert "En precio ahora mismo" in panel
 
 
+def test_buscar_por_referencia_auto1_lleva_al_historico(cliente):
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Seat Ibiza 1.0 TSI FR Crono\t9161\t49,35\tWH27138\t2017\t51774\tGasolina\tManual"},
+    )
+    v = Valoracion.objects.get(lote_id="WH27138")
+
+    resp = cliente.get(reverse("buscar_vehiculo"), {"q": "WH27138"})
+    assert resp.status_code == 302
+    assert resp.url == reverse("vehiculo_detalle", args=[v.vehiculo_id])
+
+    # sin resultados: no rompe, avisa y vuelve
+    resp2 = cliente.get(reverse("buscar_vehiculo"), {"q": "NOEXISTE"}, follow=True)
+    assert resp2.status_code == 200
+
+
+def test_historico_vehiculo_marca_comprable_y_muestra_hora(cliente):
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-10"
+    )
+    s2 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    linea_barato = "Seat Ibiza 1.0 TSI FR Crono\t7000\t49,35\tWH27138\t2017\t51774\tGasolina\tManual"
+    linea_caro = "Seat Ibiza 1.0 TSI FR Crono\t12000\t49,35\tWH27138\t2017\t51800\tGasolina\tManual"
+
+    cliente.post(reverse("sesion_pegar", args=[s1.pk]), {"texto": linea_barato})
+    v1 = Valoracion.objects.get(sesion_subasta=s1)
+    cliente.post(reverse("celda_update", args=[v1.pk]), {"campo": "precio_venta_estimado", "valor": "15000"})
+
+    cliente.post(reverse("sesion_pegar", args=[s2.pk]), {"texto": linea_caro})
+    v2 = Valoracion.objects.get(sesion_subasta=s2)
+    cliente.post(reverse("celda_update", args=[v2.pk]), {"campo": "precio_venta_estimado", "valor": "15000"})
+
+    resp = cliente.get(reverse("vehiculo_detalle", args=[v1.vehiculo_id]))
+    html = resp.content.decode()
+    assert html.count("✓ sí") == 1   # barato: comprable
+    assert html.count("✗ no") == 1   # caro: ya no
+    assert ":" in html  # hora visible (H:i)
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

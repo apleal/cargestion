@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Buscar "{{ q }}" · Tasador{% endblock %}
+{% block content %}
+<h1>Resultados para "{{ q }}"</h1>
+<div class="card">
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th>Matrícula</th><th class="num">Año</th><th class="num">Valoraciones</th></tr></thead>
+    <tbody>
+      {% for veh in vehiculos %}
+      <tr>
+        <td><a href="{% url 'vehiculo_detalle' veh.pk %}">{{ veh.marca }} {{ veh.modelo }} {{ veh.version }}</a></td>
+        <td class="mono">{{ veh.matricula }}</td>
+        <td class="num">{{ veh.anio }}</td>
+        <td class="num">{{ veh.numero_valoraciones }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="mono">Sin resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

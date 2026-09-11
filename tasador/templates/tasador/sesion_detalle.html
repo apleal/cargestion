@@ -24,6 +24,18 @@
   </form>
 </details>
 
+<form method="get" action="{% url 'buscar_vehiculo' %}" class="card buscar">
+  <label for="buscar-q">
+    {% if es_auto1 %}Buscar por Ref. Auto1{% else %}Buscar por matrícula{% endif %}
+    <span class="mono ayuda">— te lleva al histórico completo del coche, esté en esta subasta o en otra</span>
+  </label>
+  <div class="buscar-row">
+    <input type="text" id="buscar-q" name="q"
+           placeholder="{% if es_auto1 %}p. ej. AP63011{% else %}p. ej. 4970KZC{% endif %}" autocomplete="off">
+    <button type="submit" class="btn">Buscar</button>
+  </div>
+</form>
+
 <div class="card">
   <div class="tw grid-wrap">
     <table class="rejilla">

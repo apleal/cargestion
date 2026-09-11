@@ -42,6 +42,31 @@ def _pct_es(x, dec=1) -> str:
         return "—"
 
 
+def _en_precio(v: models.Valoracion) -> bool:
+    """¿El precio de salida (real) ya está por debajo de la puja máxima al 15 %?
+
+    Ambos importes son los guardados en la valoración (snapshot de ese momento),
+    así que también sirve para leer el histórico: "el 10/09 sí se podía comprar,
+    el 11/09 ya no".
+    """
+    return bool(
+        v.precio_salida and v.r_puja_maxima_principal
+        and v.precio_salida <= v.r_puja_maxima_principal
+    )
+
+
+def _delta_precio_salida(v: models.Valoracion, anterior: models.Valoracion | None) -> tuple[str | None, str | None]:
+    """Diferencia de precio de salida respecto a otra valoración del mismo coche."""
+    if not (anterior and anterior.precio_salida and v.precio_salida):
+        return None, None
+    diff = anterior.precio_salida - v.precio_salida
+    if diff == 0:
+        return None, None
+    signo = "baja" if diff > 0 else "sube"
+    txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
+    return txt, signo
+
+
 def _fila_valoracion(v: models.Valoracion) -> dict:
     """Datos que necesita una fila de la rejilla tipo Excel."""
     esc = v.r_escenarios or {}
@@ -51,21 +76,8 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
                 return val.get("puja_maxima")
         return None
 
-    # ¿Está ya en precio de compra al objetivo principal (15 %)?
-    en_precio = bool(
-        v.precio_salida and v.r_puja_maxima_principal
-        and v.precio_salida <= v.r_puja_maxima_principal
-    )
-
-    # ¿Ha bajado el precio de salida respecto a la valoración anterior del mismo coche?
-    delta_txt = None
-    delta_signo = None
-    anterior = getattr(v, "valoracion_anterior", None)
-    if anterior and anterior.precio_salida and v.precio_salida:
-        diff = anterior.precio_salida - v.precio_salida
-        if diff != 0:
-            delta_signo = "baja" if diff > 0 else "sube"
-            delta_txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
+    en_precio = _en_precio(v)
+    delta_txt, delta_signo = _delta_precio_salida(v, getattr(v, "valoracion_anterior", None))
 
     return {
         "id": v.pk,
@@ -438,28 +450,50 @@ def calcular_api(request):
 
 @login_required
 def vehiculo_detalle(request, pk):
+    """Ficha de un coche: histórico completo, ordenado de más antigua a más
+    reciente, con la evolución del precio y si en cada momento se podía comprar
+    al objetivo del 15 % ("ayer sí, hoy ya no porque han pujado")."""
     veh = get_object_or_404(models.Vehiculo, pk=pk)
     valoraciones = list(
         veh.valoraciones.select_related("estado", "sesion_subasta").order_by(
             "fecha_valoracion", "created_at"
         )
     )
-    anterior_salida = None
+    anterior = None
     for v in valoraciones:
-        v.delta_txt = None
-        v.delta_signo = None
-        if anterior_salida and v.precio_salida:
-            diff = anterior_salida - v.precio_salida
-            if diff != 0:
-                v.delta_signo = "baja" if diff > 0 else "sube"
-                v.delta_txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
-        if v.precio_salida:
-            anterior_salida = v.precio_salida
+        v.delta_txt, v.delta_signo = _delta_precio_salida(v, anterior)
+        v.en_precio = _en_precio(v)
+        anterior = v
+    referencias = {v.lote_id for v in valoraciones if v.lote_id}
     return render(
         request,
         "tasador/vehiculo_detalle.html",
-        {"vehiculo": veh, "valoraciones": valoraciones},
+        {
+            "vehiculo": veh,
+            "valoraciones": valoraciones,
+            "referencia": next(iter(referencias), "") if len(referencias) == 1 else "",
+        },
     )
+
+
+@login_required
+def buscar_vehiculo(request):
+    """Buscador por Ref. Auto1 o matrícula: lleva directo al histórico del coche."""
+    q = (request.GET.get("q") or "").strip()
+    if not q:
+        return redirect(request.META.get("HTTP_REFERER") or "panel")
+
+    vehiculos = models.Vehiculo.objects.filter(
+        Q(matricula__iexact=q) | Q(valoraciones__lote_id__iexact=q)
+    ).distinct()
+    if vehiculos.count() == 1:
+        return redirect("vehiculo_detalle", pk=vehiculos.first().pk)
+    if vehiculos.count() > 1:
+        return render(
+            request, "tasador/buscar_resultados.html", {"q": q, "vehiculos": vehiculos}
+        )
+    messages.warning(request, f'No se encontró ningún coche con "{q}".')
+    return redirect(request.META.get("HTTP_REFERER") or "panel")
 
 
 @login_required
