@@ -54,16 +54,29 @@
       <tbody>
         {% for v in lotes %}
         {% with f=v.fila %}
-        <tr data-row="{{ v.pk }}" {% if f.en_precio %}class="oportunidad"{% endif %}>
+        <tr data-row="{{ v.pk }}" {% if f.tier %}class="tier-{{ f.tier }}"{% endif %}>
           <td class="num">
             <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
                    value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
           </td>
           <td class="coche">
-            {% if f.en_precio %}<span class="pill ok" title="Precio de salida ya por debajo de tu puja al 15 %">🎯 en precio</span>{% endif %}
+            {% if f.tier %}<span class="pill pill-tier t{{ f.tier }}" title="Precio de salida ya por debajo de tu puja al {{ f.tier }} %">🎯 {{ f.tier }}%</span>{% endif %}
             <a href="{% url 'vehiculo_detalle' v.vehiculo.pk %}">{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</a>
             <span class="ver">{{ v.vehiculo.version }}</span>
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
+            {% if v.historial %}
+            <button type="button" class="toggle-historial" data-target="hist-{{ v.pk }}">+{{ v.historial|length }} anterior{{ v.historial|length|pluralize }}</button>
+            <div class="historial-mini" id="hist-{{ v.pk }}" hidden>
+              {% for h in v.historial %}
+              <div class="hist-item">
+                <a href="{% url 'valoracion_editar' h.pk %}">{{ h.created_at|date:"d/m H:i" }}</a>
+                · {{ h.precio_salida|eur }}
+                {% if h.fila.delta_txt %}<span class="delta {{ h.fila.delta_signo }}">{{ h.fila.delta_txt }}</span>{% endif %}
+                {% if h.fila.tier %}<span class="pill t{{ h.fila.tier }}">{{ h.fila.tier }}%</span>{% else %}<span class="pill no">✗</span>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
           </td>
           <td class="mono">{{ v.vehiculo.matricula|default:v.lote_id }}</td>
           <td class="num mono">{{ v.kilometros|miles }}</td>
@@ -164,17 +177,20 @@
             var pz = tr.querySelector('.piezas');
             if(pz && document.activeElement !== pz) pz.value = j.piezas_pintura;
           }
-          if(j.en_precio !== undefined){
-            tr.classList.toggle('oportunidad', !!j.en_precio);
+          if(j.tier !== undefined){
+            tr.classList.remove('tier-15','tier-12','tier-10');
+            if(j.tier) tr.classList.add('tier-'+j.tier);
             var cocheTd = tr.querySelector('.coche');
-            var pill = cocheTd.querySelector('.pill.ok');
-            if(j.en_precio && !pill){
-              pill = document.createElement('span');
-              pill.className = 'pill ok';
-              pill.title = 'Precio de salida ya por debajo de tu puja al 15 %';
-              pill.textContent = '🎯 en precio';
-              cocheTd.insertBefore(pill, cocheTd.firstChild);
-            } else if(!j.en_precio && pill){
+            var pill = cocheTd.querySelector('.pill-tier');
+            if(j.tier){
+              if(!pill){
+                pill = document.createElement('span');
+                cocheTd.insertBefore(pill, cocheTd.firstChild);
+              }
+              pill.className = 'pill pill-tier t'+j.tier;
+              pill.title = 'Precio de salida ya por debajo de tu puja al '+j.tier+' %';
+              pill.textContent = '🎯 '+j.tier+'%';
+            } else if(pill){
               pill.remove();
             }
           }
@@ -182,6 +198,15 @@
           setTimeout(function(){ tr.classList.remove('recalc'); }, 600);
         })
         .catch(function(){ el.classList.remove('guardando'); el.classList.add('err'); });
+    });
+  });
+
+  document.querySelectorAll('.toggle-historial').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el = document.getElementById(btn.dataset.target);
+      if(!el) return;
+      el.hidden = !el.hidden;
+      btn.classList.toggle('abierto', !el.hidden);
     });
   });
 })();

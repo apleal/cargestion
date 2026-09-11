@@ -272,6 +272,42 @@ def crear_valoracion_desde_lote(
     iva_anuncio = Decimal(lote.iva_anuncio) if (es_auto1 and lote.iva_anuncio) else Decimal("0")
     precio_salida = Decimal(lote.precio_subasta) if lote.precio_subasta else Decimal("0")
 
+    # Retasación: es el mismo coche, así que se hereda tu tasación anterior
+    # (venta estimada, estado, costes) en vez de arrancar en blanco. Lo único
+    # que cambia son los datos frescos del anuncio (precio, IVA, km).
+    if anterior:
+        precio_venta_estimado = anterior.precio_venta_estimado
+        estado_carroceria_v = anterior.estado_carroceria or carroceria
+        piezas_pintura_v = anterior.piezas_pintura
+        descuento_comision_v = anterior.descuento_comision_pct
+        coste_alberto_v = anterior.coste_alberto
+        coste_gasolina_v = anterior.coste_gasolina
+        coste_pintura_v = anterior.coste_pintura_por_pieza
+        coste_garantia_v = anterior.coste_garantia
+        coste_mecanica_v = anterior.coste_mecanica
+        coste_cambio_v = anterior.coste_cambio_titularidad
+        coste_transporte_v = anterior.coste_transporte if not es_auto1 else transporte
+        coste_itv_v = anterior.coste_itv
+        coste_tapiceria_v = anterior.coste_tapiceria
+        coste_tintado_v = anterior.coste_tintado
+        coste_otros_v = anterior.coste_otros
+    else:
+        precio_venta_estimado = Decimal("0")
+        estado_carroceria_v = carroceria
+        piezas_pintura_v = carroceria.piezas_estimadas if carroceria else 4
+        descuento_comision_v = Decimal("0")
+        coste_alberto_v = params.comision_alberto
+        coste_gasolina_v = params.gasolina
+        coste_pintura_v = params.pintura_por_pieza
+        coste_garantia_v = params.garantia
+        coste_mecanica_v = params.mecanica
+        coste_cambio_v = params.cambio_titularidad
+        coste_transporte_v = transporte
+        coste_itv_v = params.itv
+        coste_tapiceria_v = Decimal("0")
+        coste_tintado_v = Decimal("0")
+        coste_otros_v = Decimal("0")
+
     v = Valoracion.objects.create(
         vehiculo=vehiculo,
         valoracion_anterior=anterior,
@@ -287,18 +323,26 @@ def crear_valoracion_desde_lote(
         fecha_valoracion=timezone.localdate(),
         fecha_subasta=sesion.fecha,
         kilometros=lote.kilometros,
-        precio_venta_estimado=Decimal("0"),
-        estado_carroceria=carroceria,
-        piezas_pintura=carroceria.piezas_estimadas if carroceria else 4,
-        coste_alberto=params.comision_alberto,
-        coste_gasolina=params.gasolina,
-        coste_pintura_por_pieza=params.pintura_por_pieza,
-        coste_garantia=params.garantia,
-        coste_mecanica=params.mecanica,
-        coste_cambio_titularidad=params.cambio_titularidad,
-        coste_transporte=transporte,
-        coste_itv=params.itv,
-        estado=estado_pdte,
+        precio_venta_estimado=precio_venta_estimado,
+        estado_carroceria=estado_carroceria_v,
+        piezas_pintura=piezas_pintura_v,
+        descuento_comision_pct=descuento_comision_v,
+        coste_alberto=coste_alberto_v,
+        coste_gasolina=coste_gasolina_v,
+        coste_pintura_por_pieza=coste_pintura_v,
+        coste_garantia=coste_garantia_v,
+        coste_mecanica=coste_mecanica_v,
+        coste_cambio_titularidad=coste_cambio_v,
+        coste_transporte=coste_transporte_v,
+        coste_itv=coste_itv_v,
+        coste_tapiceria=coste_tapiceria_v,
+        coste_tintado=coste_tintado_v,
+        coste_otros=coste_otros_v,
+        estado=(
+            anterior.estado
+            if anterior and anterior.estado and not anterior.estado.es_final
+            else estado_pdte
+        ),
         creado_por=usuario,
         observaciones=f"Importado: {lote.texto_original[:200]}",
     )

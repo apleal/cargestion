@@ -98,6 +98,39 @@ def test_auto1_provider_y_calculo(datos):
     assert any("Gestión documental Auto1" in c for c in conceptos)
 
 
+def test_retasacion_hereda_venta_y_costes(datos):
+    """Al repegar el mismo coche, la nueva valoracion no arranca en blanco:
+    hereda venta estimada, estado de carroceria y costes de la anterior."""
+    from tasador.models import Proveedor, SesionSubasta
+    from tasador.parser import parsear_linea_auto1
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-10"
+    )
+    s2 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    l1 = parsear_linea_auto1(
+        "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    )
+    v1, _ = services.crear_valoracion_desde_lote(l1, s1)
+    v1.precio_venta_estimado = Decimal("7500")
+    v1.coste_mecanica = Decimal("450")  # ajuste manual suyo
+    v1.save()
+    services.recalcular_y_guardar(v1)
+
+    l2 = parsear_linea_auto1(
+        "Opel Adam 1.4 Glam ecoFlex\t3900\t75.18\tPT46293\t2017\t116900\tGasolina\tManual"
+    )
+    v2, es_ret = services.crear_valoracion_desde_lote(l2, s2)
+
+    assert es_ret is True
+    assert v2.precio_venta_estimado == Decimal("7500")  # heredado, no 0
+    assert v2.coste_mecanica == Decimal("450")           # ajuste heredado
+    assert v2.r_puja_maxima_principal is not None         # ya calculada, sin tocar nada
+
+
 def test_transporte_por_zona_al_pegar(datos):
     """El lote coge el transporte de su zona de origen."""
     from tasador.models import SesionSubasta, TarifaTransporte

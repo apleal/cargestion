@@ -42,17 +42,33 @@ def _pct_es(x, dec=1) -> str:
         return "—"
 
 
-def _en_precio(v: models.Valoracion) -> bool:
-    """¿El precio de salida (real) ya está por debajo de la puja máxima al 15 %?
+def _tier_precio_salida(v: models.Valoracion) -> str | None:
+    """¿A qué objetivo llega el precio de salida (real) de este momento?
 
-    Ambos importes son los guardados en la valoración (snapshot de ese momento),
-    así que también sirve para leer el histórico: "el 10/09 sí se podía comprar,
-    el 11/09 ya no".
+    "15" = ya cumple el 15 % (el mejor caso) · "12" · "10" · None = no llega
+    ni al 10 %. Se calcula con los importes guardados en la valoración (snapshot
+    de ese momento), así que también sirve para leer el histórico: "el 10/09
+    llegaba al 15 %, el 11/09 ya no llega ni al 10 %".
     """
-    return bool(
-        v.precio_salida and v.r_puja_maxima_principal
-        and v.precio_salida <= v.r_puja_maxima_principal
-    )
+    if not v.precio_salida:
+        return None
+    esc = v.r_escenarios or {}
+    def puja(pref):
+        for k, val in esc.items():
+            if k.startswith(pref):
+                pm = val.get("puja_maxima")
+                return Decimal(pm) if pm else None
+        return None
+    for pref, tier in (("0.15", "15"), ("0.12", "12"), ("0.10", "10")):
+        pm = puja(pref)
+        if pm is not None and v.precio_salida <= pm:
+            return tier
+    return None
+
+
+def _en_precio(v: models.Valoracion) -> bool:
+    """¿El precio de salida ya está por debajo de la puja máxima al 15 % (el objetivo)?"""
+    return _tier_precio_salida(v) == "15"
 
 
 def _delta_precio_salida(v: models.Valoracion, anterior: models.Valoracion | None) -> tuple[str | None, str | None]:
@@ -76,7 +92,7 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
                 return val.get("puja_maxima")
         return None
 
-    en_precio = _en_precio(v)
+    tier = _tier_precio_salida(v)
     delta_txt, delta_signo = _delta_precio_salida(v, getattr(v, "valoracion_anterior", None))
 
     return {
@@ -89,7 +105,8 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "transporte": str(v.coste_transporte),
         "zona_origen": v.zona_origen,
         "precio_salida": str(v.precio_salida),
-        "en_precio": en_precio,
+        "tier": tier,
+        "en_precio": tier == "15",
         "delta_txt": delta_txt,
         "delta_signo": delta_signo,
     }
@@ -169,19 +186,42 @@ def sesion_detalle(request, pk):
     sesion = get_object_or_404(
         models.SesionSubasta.objects.select_related("ubicacion", "proveedor"), pk=pk
     )
-    lotes = list(
+    es_auto1 = sesion.proveedor.tipos_subasta.filter(modo="iva_anuncio").exists()
+    todos = list(
         sesion.valoraciones.select_related(
             "vehiculo", "estado", "estado_carroceria", "valoracion_anterior"
         )
         .order_by("orden_lote", "created_at")
     )
-    for v in lotes:
+    for v in todos:
         v.fila = _fila_valoracion(v)
+
+    if es_auto1:
+        # Auto1 es un mercado continuo: el mismo coche se vuelve a pegar varias
+        # veces. Se agrupa por vehículo, se muestra solo el último escaneo como
+        # fila principal (con un "+N" al historial) y se ordena por fecha de
+        # escaneo más reciente primero.
+        grupos: dict[int, list] = {}
+        for v in todos:
+            grupos.setdefault(v.vehiculo_id, []).append(v)
+        lotes = []
+        for vs in grupos.values():
+            vs.sort(key=lambda x: x.created_at, reverse=True)
+            principal, historial = vs[0], vs[1:]
+            for h in historial:
+                h.fila = _fila_valoracion(h)
+            principal.historial = historial
+            lotes.append(principal)
+        lotes.sort(key=lambda v: v.created_at, reverse=True)
+    else:
+        for v in todos:
+            v.historial = []
+        lotes = todos
+
     zonas = list(
         sesion.proveedor.tarifas_transporte.filter(activa=True)
         .values_list("origen", flat=True)
     )
-    es_auto1 = sesion.proveedor.tipos_subasta.filter(modo="iva_anuncio").exists()
     ctx = {
         "sesion": sesion,
         "lotes": lotes,
@@ -462,7 +502,7 @@ def vehiculo_detalle(request, pk):
     anterior = None
     for v in valoraciones:
         v.delta_txt, v.delta_signo = _delta_precio_salida(v, anterior)
-        v.en_precio = _en_precio(v)
+        v.tier = _tier_precio_salida(v)
         anterior = v
     referencias = {v.lote_id for v in valoraciones if v.lote_id}
     return render(

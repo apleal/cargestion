@@ -17,7 +17,7 @@
     </tr></thead>
     <tbody>
       {% for v in valoraciones %}
-      <tr class="{% if v.en_precio %}oportunidad{% endif %}">
+      <tr class="{% if v.tier %}tier-{{ v.tier }}{% endif %}">
         <td class="num"><a href="{% url 'valoracion_editar' v.pk %}">{{ v.created_at|date:"d/m/Y H:i" }}</a></td>
         <td>{% if v.sesion_subasta %}{{ v.sesion_subasta }}{% else %}—{% endif %}</td>
         <td class="num">{{ v.kilometros|miles }}</td>
@@ -27,14 +27,14 @@
         </td>
         <td class="num">{{ v.precio_venta_estimado|eur }}</td>
         <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
-        <td>{% if v.en_precio %}<span class="pill ok">✓ sí</span>{% elif v.precio_salida %}<span class="pill no">✗ no</span>{% else %}—{% endif %}</td>
+        <td>{% if v.tier %}<span class="pill t{{ v.tier }}">🎯 {{ v.tier }}%</span>{% elif v.precio_salida %}<span class="pill no">✗ no llega</span>{% else %}—{% endif %}</td>
         <td>{{ v.estado.nombre }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table></div>
   {% if valoraciones|length > 1 %}
-  <p class="mono ayuda">Retasado {{ valoraciones|length }} veces. La columna "¿Comprable?" compara, en cada momento, el precio de salida real con tu puja máxima al 15&nbsp;% de entonces.</p>
+  <p class="mono ayuda">Retasado {{ valoraciones|length }} veces. La columna "¿Comprable?" compara, en cada momento, el precio de salida real con tu puja máxima de entonces: <span class="pill t15">🎯 15%</span> llega al objetivo, <span class="pill t12">🎯 12%</span> y <span class="pill t10">🎯 10%</span> se quedan más ajustados.</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -143,10 +143,11 @@ def test_en_precio_se_marca_cuando_salida_por_debajo_de_puja(cliente):
     )
     data = resp.json()
     assert data["en_precio"] is True
+    assert data["tier"] == "15"
 
     grid = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
-    assert "en precio" in grid
-    assert "oportunidad" in grid
+    assert "🎯 15%" in grid
+    assert "tier-15" in grid
 
     panel = cliente.get(reverse("panel")).content.decode()
     assert "En precio ahora mismo" in panel
@@ -197,9 +198,44 @@ def test_historico_vehiculo_marca_comprable_y_muestra_hora(cliente):
 
     resp = cliente.get(reverse("vehiculo_detalle", args=[v1.vehiculo_id]))
     html = resp.content.decode()
-    assert html.count("✓ sí") == 1   # barato: comprable
-    assert html.count("✗ no") == 1   # caro: ya no
+    assert "tier-15" in html   # barato: llega al 15 %
+    assert "✗ no llega" in html  # caro: no llega ni al 10 %
     assert ":" in html  # hora visible (H:i)
+
+
+def test_rejilla_auto1_agrupa_por_coche_y_ordena_por_ultimo_escaneo(cliente):
+    """En Auto1, si el mismo coche se pega dos veces en la misma sesion, la
+    rejilla solo muestra la mas reciente como fila principal, con un "+1"
+    para la anterior, y esa fila principal va primero (mas reciente)."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"},
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Fiat 500 1.2 Lounge\t4152\t140.28\tTL47170\t2014\t99047\tGasolina\tManual"},
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Opel Adam 1.4 Glam ecoFlex\t3900\t75.18\tPT46293\t2017\t116900\tGasolina\tManual"},
+    )
+    assert Valoracion.objects.filter(sesion_subasta=s).count() == 3
+
+    resp = cliente.get(reverse("sesion_detalle", args=[s.pk]))
+    assert len(resp.context["lotes"]) == 2  # agrupado: Opel (ultimo) + Fiat
+    html = resp.content.decode()
+    # solo una fila <tr> visible por PT46293: la del ultimo escaneo (3900), no la de 4062
+    assert html.count('<tr data-row="') == 2
+    assert "+1 anterior" in html
+    assert "3.900 €" in html  # el precio de salida visible es el mas reciente
+    hist = html.split('class="historial-mini"')[1]
+    assert "4.062" in hist  # el anterior esta dentro del desplegable
 
 
 def test_celda_origen_actualiza_transporte(cliente):
