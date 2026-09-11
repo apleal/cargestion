@@ -64,7 +64,10 @@
         <h2>Puja máxima por objetivo</h2>
         <div class="scn" id="scn"></div>
         <h2>Desglose de una puja</h2>
-        <p><label>Puja (€)</label><input type="number" id="puja" step="50" value="{{ valoracion.r_puja_maxima_principal|default:'' }}"></p>
+        <p><label>Puja (€) · el precio real, no un objetivo</label>
+          <input type="number" id="puja" step="50"
+                 value="{% if valoracion.precio_salida %}{{ valoracion.precio_salida|floatformat:0 }}{% endif %}"></p>
+        <p class="mono ayuda">Escribe aquí la puja real (o el precio de salida actual) para ver el beneficio real a ese precio. Los recuadros de arriba son objetivos (15/12/10&nbsp;%); pulsarlos solo sirve para explorar "y si pujo eso".</p>
         <table class="bd"><tbody id="bd"></tbody></table>
         <p id="veredicto" class="pill"></p>
       </div>
@@ -173,12 +176,8 @@
       .then(function(j){
         if(j.error){ scn.innerHTML = '<div class="s neg">'+j.error+'</div>'; return; }
         pintarEscenarios(j.escenarios);
-        // si no hay puja escrita, precarga la del objetivo (15 %) y recalcula
-        if(!pujaIn.value && j.escenarios[0] && j.escenarios[0].puja_maxima){
-          pujaIn.value = Math.round(parseFloat(j.escenarios[0].puja_maxima));
-          recalc();
-          return;
-        }
+        // el desglose solo se calcula si hay una puja REAL escrita (precio de
+        // salida real o la que tú pongas) — nunca se rellena sola con un objetivo.
         pintarDesglose(j.desglose, j.preparacion);
       })
       .catch(function(){});
