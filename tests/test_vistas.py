@@ -238,6 +238,28 @@ def test_rejilla_auto1_agrupa_por_coche_y_ordena_por_ultimo_escaneo(cliente):
     assert "4.062" in hist  # el anterior esta dentro del desplegable
 
 
+def test_ficha_auto1_oculta_fechas_y_manda_piezas_por_carroceria(cliente):
+    from tasador.models import EstadoCarroceria, Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"},
+    )
+    v = Valoracion.objects.get(lote_id="PT46293")
+
+    resp = cliente.get(reverse("valoracion_editar", args=[v.pk]))
+    html = resp.content.decode()
+    assert "<label>Fecha valoración</label>" not in html
+    assert 'type="hidden"' in html and 'name="fecha_valoracion"' in html
+
+    desgastado = EstadoCarroceria.objects.get(nombre="Desgastado")
+    assert f'"{desgastado.pk}":6' in html.replace(" ", "")
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

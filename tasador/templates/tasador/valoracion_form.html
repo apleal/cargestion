@@ -34,8 +34,12 @@
           <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
           <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>
           <p><label>Piezas de pintura</label>{{ form.piezas_pintura }}</p>
+          {% if not valoracion or valoracion.tipo_subasta.modo != "iva_anuncio" %}
           <p><label>Fecha valoración</label>{{ form.fecha_valoracion }}</p>
           <p><label>Fecha subasta</label>{{ form.fecha_subasta }}</p>
+          {% else %}
+          <div>{{ form.fecha_valoracion.as_hidden }}{{ form.fecha_subasta.as_hidden }}</div>
+          {% endif %}
         </div>
       </div>
 
@@ -83,6 +87,16 @@
   var url = "{% url 'calcular_api' %}";
   var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
   var scn = document.getElementById('scn');
+  var PIEZAS_POR_CARROCERIA = {{ carrocerias_piezas_json|default:"{}"|safe }};
+
+  var estadoCarroceria = form.querySelector('[name="estado_carroceria"]');
+  var piezas = form.querySelector('[name="piezas_pintura"]');
+  if(estadoCarroceria && piezas){
+    estadoCarroceria.addEventListener('change', function(){
+      var p = PIEZAS_POR_CARROCERIA[estadoCarroceria.value];
+      if(p !== undefined){ piezas.value = p; piezas.dispatchEvent(new Event('input', {bubbles:true})); }
+    });
+  }
   var bd = document.getElementById('bd');
   var pujaIn = document.getElementById('puja');
   var veredicto = document.getElementById('veredicto');

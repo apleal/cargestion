@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -16,6 +17,11 @@ from .forms import PegarLotesForm, SesionSubastaForm, ValoracionForm
 from .parser import parsear_texto
 
 OBJETIVOS_ORDEN = ["0.15", "0.12", "0.10"]
+
+
+def _carrocerias_piezas_json() -> str:
+    """{id: piezas_estimadas} de cada estado de carrocería, para el JS del formulario."""
+    return json.dumps(dict(models.EstadoCarroceria.objects.values_list("id", "piezas_estimadas")))
 
 
 def _fmt_escenarios(escs) -> list[dict]:
@@ -361,7 +367,12 @@ def valoracion_nueva(request):
     return render(
         request,
         "tasador/valoracion_form.html",
-        {"form": form, "vehiculo": None, "valoracion": None},
+        {
+            "form": form,
+            "vehiculo": None,
+            "valoracion": None,
+            "carrocerias_piezas_json": _carrocerias_piezas_json(),
+        },
     )
 
 
@@ -400,6 +411,7 @@ def valoracion_editar(request, pk):
             "valoracion": v,
             "vehiculo": v.vehiculo,
             "escenarios": _fmt_escenarios(resultado.escenarios),
+            "carrocerias_piezas_json": _carrocerias_piezas_json(),
         },
     )
 
