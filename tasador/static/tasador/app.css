@@ -131,6 +131,12 @@ table.rejilla select.celda{font-family:"IBM Plex Sans",sans-serif;min-width:120p
 table.rejilla .celda.guardando{opacity:.5}
 table.rejilla .celda.err{border-color:var(--warn);background:var(--warn-soft)}
 table.rejilla tr.recalc td{background:var(--good-soft);transition:background .1s}
+table.rejilla tr.oportunidad td{background:var(--good-soft)}
+table.rejilla tr.oportunidad td.destacado{background:var(--good-soft);color:var(--good)}
+table.rejilla .coche .pill{margin-right:6px}
+.delta{font-size:.72rem;font-weight:600}
+.delta.baja{color:var(--good)}
+.delta.sube{color:var(--warn)}
 table.rejilla td.vacio,table.rejilla .vacio{padding:20px;color:var(--ink-soft);border-right:0}
 
 table.rejilla.sala td.big{font-size:1.15rem;font-weight:700;font-family:"IBM Plex Mono",monospace}

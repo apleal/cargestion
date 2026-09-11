@@ -96,6 +96,62 @@ def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
     assert 'class="btn mini-btn"' in html
 
 
+def test_retasacion_auto1_detecta_bajada_de_precio(cliente):
+    """Pegar dos veces el mismo coche de Auto1 (precio distinto) enlaza y marca la bajada."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-10"
+    )
+    s2 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    linea_1 = "Seat Ibiza 1.0 TSI FR Crono\t9161\t49,35\tWH27138\t2017\t51774\tGasolina\tManual"
+    linea_2 = "Seat Ibiza 1.0 TSI FR Crono\t8500\t49,35\tWH27138\t2017\t51900\tGasolina\tManual"
+
+    r1 = cliente.get(reverse("sesion_detalle", args=[s1.pk]))  # asegura csrf cookie
+    tok = r1.cookies.get("csrftoken")
+    cliente.post(reverse("sesion_pegar", args=[s1.pk]), {"texto": linea_1})
+    v1 = Valoracion.objects.get(lote_id="WH27138", sesion_subasta=s1)
+    assert v1.precio_salida == 9161
+
+    cliente.post(reverse("sesion_pegar", args=[s2.pk]), {"texto": linea_2})
+    v2 = Valoracion.objects.get(lote_id="WH27138", sesion_subasta=s2)
+    assert v2.valoracion_anterior_id == v1.pk
+    assert v2.precio_salida == 8500
+
+    grid = cliente.get(reverse("sesion_detalle", args=[s2.pk])).content.decode()
+    assert "↓ 661" in grid or "661" in grid  # 9161 - 8500 = 661
+    assert "retasado" in grid
+
+
+def test_en_precio_se_marca_cuando_salida_por_debajo_de_puja(cliente):
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-11"
+    )
+    linea = "Seat Ibiza 1.0 TSI FR Crono\t7500\t49,35\tWH27138\t2017\t51774\tGasolina\tManual"
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": linea})
+    v = Valoracion.objects.get(lote_id="WH27138")
+    # venta alta y precio de salida bajo -> la puja maxima al 15% deberia superar la salida (7500)
+    resp = cliente.post(
+        reverse("celda_update", args=[v.pk]),
+        {"campo": "precio_venta_estimado", "valor": "15000"},
+    )
+    data = resp.json()
+    assert data["en_precio"] is True
+
+    grid = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "en precio" in grid
+    assert "oportunidad" in grid
+
+    panel = cliente.get(reverse("panel")).content.decode()
+    assert "En precio ahora mismo" in panel
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

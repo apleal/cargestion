@@ -30,6 +30,26 @@
   {% endif %}
 </div>
 
+{% if en_precio_total %}
+<div class="card">
+  <h2>🎯 En precio ahora mismo ({{ en_precio_total }})</h2>
+  <p class="mono ayuda">Coches cuyo precio de salida actual ya está por debajo de tu puja máxima al 15&nbsp;%.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th>Subasta</th><th class="num">Salida</th><th class="num">Puja máx. 15%</th></tr></thead>
+    <tbody>
+      {% for v in en_precio %}
+      <tr>
+        <td><a href="{% url 'valoracion_editar' v.pk %}">{{ v.vehiculo }}</a></td>
+        <td>{% if v.sesion_subasta %}<a href="{% url 'sesion_detalle' v.sesion_subasta.pk %}">{{ v.sesion_subasta }}</a>{% else %}—{% endif %}</td>
+        <td class="num">{{ v.precio_salida|eur }}</td>
+        <td class="num destacado">{{ v.r_puja_maxima_principal|eur }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Resumen</h2>
   <div class="kpis">

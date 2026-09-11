@@ -42,19 +42,25 @@
       <tbody>
         {% for v in lotes %}
         {% with f=v.fila %}
-        <tr data-row="{{ v.pk }}">
+        <tr data-row="{{ v.pk }}" {% if f.en_precio %}class="oportunidad"{% endif %}>
           <td class="num">
             <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
                    value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
           </td>
           <td class="coche">
+            {% if f.en_precio %}<span class="pill ok" title="Precio de salida ya por debajo de tu puja al 15 %">🎯 en precio</span>{% endif %}
             <a href="{% url 'vehiculo_detalle' v.vehiculo.pk %}">{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</a>
             <span class="ver">{{ v.vehiculo.version }}</span>
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
           </td>
           <td class="mono">{{ v.vehiculo.matricula|default:v.lote_id }}</td>
           <td class="num mono">{{ v.kilometros|miles }}</td>
-          {% if es_auto1 %}<td class="num mono">{{ v.precio_salida|eur }}</td>{% endif %}
+          {% if es_auto1 %}
+          <td class="num mono salida">
+            {{ v.precio_salida|eur }}
+            {% if f.delta_txt %}<br><span class="delta {{ f.delta_signo }}">{{ f.delta_txt }}</span>{% endif %}
+          </td>
+          {% endif %}
           <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>
           <td class="num destacado puja-12">{{ f.puja_12|eur }}</td>
           <td class="num destacado puja-10">{{ f.puja_10|eur }}</td>
@@ -145,6 +151,20 @@
           if(j.piezas_pintura !== undefined){
             var pz = tr.querySelector('.piezas');
             if(pz && document.activeElement !== pz) pz.value = j.piezas_pintura;
+          }
+          if(j.en_precio !== undefined){
+            tr.classList.toggle('oportunidad', !!j.en_precio);
+            var cocheTd = tr.querySelector('.coche');
+            var pill = cocheTd.querySelector('.pill.ok');
+            if(j.en_precio && !pill){
+              pill = document.createElement('span');
+              pill.className = 'pill ok';
+              pill.title = 'Precio de salida ya por debajo de tu puja al 15 %';
+              pill.textContent = '🎯 en precio';
+              cocheTd.insertBefore(pill, cocheTd.firstChild);
+            } else if(!j.en_precio && pill){
+              pill.remove();
+            }
           }
           tr.classList.add('recalc');
           setTimeout(function(){ tr.classList.remove('recalc'); }, 600);

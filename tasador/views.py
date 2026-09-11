@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -50,6 +50,23 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
             if k.startswith(pref):
                 return val.get("puja_maxima")
         return None
+
+    # ¿Está ya en precio de compra al objetivo principal (15 %)?
+    en_precio = bool(
+        v.precio_salida and v.r_puja_maxima_principal
+        and v.precio_salida <= v.r_puja_maxima_principal
+    )
+
+    # ¿Ha bajado el precio de salida respecto a la valoración anterior del mismo coche?
+    delta_txt = None
+    delta_signo = None
+    anterior = getattr(v, "valoracion_anterior", None)
+    if anterior and anterior.precio_salida and v.precio_salida:
+        diff = anterior.precio_salida - v.precio_salida
+        if diff != 0:
+            delta_signo = "baja" if diff > 0 else "sube"
+            delta_txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
+
     return {
         "id": v.pk,
         "puja_15": puja("0.15"),
@@ -60,6 +77,9 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "transporte": str(v.coste_transporte),
         "zona_origen": v.zona_origen,
         "precio_salida": str(v.precio_salida),
+        "en_precio": en_precio,
+        "delta_txt": delta_txt,
+        "delta_signo": delta_signo,
     }
 
 
@@ -82,6 +102,15 @@ def panel(request):
         .order_by("fecha")[:10]
     )
     valoraciones = models.Valoracion.objects.select_related("vehiculo", "estado")
+    en_precio = (
+        valoraciones.exclude(estado__es_final=True)
+        .filter(
+            precio_salida__gt=0,
+            r_puja_maxima_principal__isnull=False,
+            precio_salida__lte=F("r_puja_maxima_principal"),
+        )
+        .select_related("vehiculo", "sesion_subasta")
+    )
     ctx = {
         "proximas": proximas,
         "total_valoraciones": valoraciones.count(),
@@ -89,6 +118,8 @@ def panel(request):
         "pujados": valoraciones.filter(estado__nombre="Pujado").count(),
         "adjudicados": valoraciones.filter(estado__nombre="Adjudicado").count(),
         "ultimas": valoraciones.order_by("-created_at")[:15],
+        "en_precio": en_precio.order_by("-updated_at")[:10],
+        "en_precio_total": en_precio.count(),
     }
     return render(request, "tasador/panel.html", ctx)
 
@@ -127,7 +158,9 @@ def sesion_detalle(request, pk):
         models.SesionSubasta.objects.select_related("ubicacion", "proveedor"), pk=pk
     )
     lotes = list(
-        sesion.valoraciones.select_related("vehiculo", "estado", "estado_carroceria")
+        sesion.valoraciones.select_related(
+            "vehiculo", "estado", "estado_carroceria", "valoracion_anterior"
+        )
         .order_by("orden_lote", "created_at")
     )
     for v in lotes:
@@ -406,9 +439,22 @@ def calcular_api(request):
 @login_required
 def vehiculo_detalle(request, pk):
     veh = get_object_or_404(models.Vehiculo, pk=pk)
-    valoraciones = veh.valoraciones.select_related("estado", "sesion_subasta").order_by(
-        "fecha_valoracion"
+    valoraciones = list(
+        veh.valoraciones.select_related("estado", "sesion_subasta").order_by(
+            "fecha_valoracion", "created_at"
+        )
     )
+    anterior_salida = None
+    for v in valoraciones:
+        v.delta_txt = None
+        v.delta_signo = None
+        if anterior_salida and v.precio_salida:
+            diff = anterior_salida - v.precio_salida
+            if diff != 0:
+                v.delta_signo = "baja" if diff > 0 else "sube"
+                v.delta_txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
+        if v.precio_salida:
+            anterior_salida = v.precio_salida
     return render(
         request,
         "tasador/vehiculo_detalle.html",
