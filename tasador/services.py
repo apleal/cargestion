@@ -204,6 +204,91 @@ def calcular(v: Valoracion, puja: Decimal | None = None) -> ResultadoCalculo:
     return ResultadoCalculo(entrada=entrada, desglose_para_puja=desglose, escenarios=escs)
 
 
+def tier_precio_salida(v: Valoracion) -> str | None:
+    """¿A qué objetivo llega el precio de salida (real) de este momento?
+
+    "15" = ya cumple el 15 % (el mejor caso) · "12" · "10" · None = no llega
+    ni al 10 %. Se calcula con los importes guardados en la valoración
+    (snapshot de ese momento), así que también sirve para leer el histórico:
+    "el 10/09 llegaba al 15 %, el 11/09 ya no llega ni al 10 %".
+    """
+    if not v.precio_salida:
+        return None
+    esc = v.r_escenarios or {}
+
+    def puja(pref):
+        for k, val in esc.items():
+            if k.startswith(pref):
+                pm = val.get("puja_maxima")
+                return Decimal(pm) if pm else None
+        return None
+
+    for pref, tier in (("0.15", "15"), ("0.12", "12"), ("0.10", "10")):
+        pm = puja(pref)
+        if pm is not None and v.precio_salida <= pm:
+            return tier
+    return None
+
+
+def en_precio(v: Valoracion) -> bool:
+    """¿El precio de salida ya está por debajo de la puja máxima al 15 % (el objetivo)?"""
+    return tier_precio_salida(v) == "15"
+
+
+def delta_precio_salida(
+    v: Valoracion, anterior: Valoracion | None
+) -> tuple[str | None, str | None]:
+    """Diferencia de precio de salida respecto a otra valoración del mismo coche."""
+    if not (anterior and anterior.precio_salida and v.precio_salida):
+        return None, None
+    diff = anterior.precio_salida - v.precio_salida
+    if diff == 0:
+        return None, None
+    signo = "baja" if diff > 0 else "sube"
+    txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
+    return txt, signo
+
+
+def sesion_auto1_de_hoy(usuario=None) -> SesionSubasta:
+    """Sesión "cajón" de Auto1 para hoy: se crea sola la primera vez que hace
+    falta (uso típico: la API de re-escaneo automático, que no debería tener
+    que elegir ni crear una sesión cada vez)."""
+    proveedor = Proveedor.objects.get(nombre="Auto1")
+    ubicacion = proveedor.ubicaciones.filter(nombre="Auto1 Online").first()
+    sesion, _ = SesionSubasta.objects.get_or_create(
+        proveedor=proveedor,
+        ubicacion=ubicacion,
+        fecha=timezone.localdate(),
+        defaults={"creada_por": usuario},
+    )
+    return sesion
+
+
+def coches_auto1_en_seguimiento():
+    """Último escaneo de cada vehículo de Auto1 cuya valoración no esté en un
+    estado final (vendido/descartado/cancelado/no adjudicado…): son los que
+    hay que volver a comprobar."""
+    proveedor = Proveedor.objects.filter(nombre="Auto1").first()
+    if not proveedor:
+        return []
+    vistos: set[int] = set()
+    salida = []
+    qs = (
+        Valoracion.objects.filter(proveedor=proveedor)
+        .exclude(lote_id="")
+        .select_related("vehiculo", "estado")
+        .order_by("vehiculo_id", "-created_at")
+    )
+    for v in qs:
+        if v.vehiculo_id in vistos:
+            continue
+        vistos.add(v.vehiculo_id)
+        if v.estado and v.estado.es_final:
+            continue
+        salida.append(v)
+    return salida
+
+
 def crear_valoracion_desde_lote(
     lote: LoteParseado,
     sesion: SesionSubasta,

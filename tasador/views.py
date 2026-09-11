@@ -48,45 +48,9 @@ def _pct_es(x, dec=1) -> str:
         return "—"
 
 
-def _tier_precio_salida(v: models.Valoracion) -> str | None:
-    """¿A qué objetivo llega el precio de salida (real) de este momento?
-
-    "15" = ya cumple el 15 % (el mejor caso) · "12" · "10" · None = no llega
-    ni al 10 %. Se calcula con los importes guardados en la valoración (snapshot
-    de ese momento), así que también sirve para leer el histórico: "el 10/09
-    llegaba al 15 %, el 11/09 ya no llega ni al 10 %".
-    """
-    if not v.precio_salida:
-        return None
-    esc = v.r_escenarios or {}
-    def puja(pref):
-        for k, val in esc.items():
-            if k.startswith(pref):
-                pm = val.get("puja_maxima")
-                return Decimal(pm) if pm else None
-        return None
-    for pref, tier in (("0.15", "15"), ("0.12", "12"), ("0.10", "10")):
-        pm = puja(pref)
-        if pm is not None and v.precio_salida <= pm:
-            return tier
-    return None
-
-
-def _en_precio(v: models.Valoracion) -> bool:
-    """¿El precio de salida ya está por debajo de la puja máxima al 15 % (el objetivo)?"""
-    return _tier_precio_salida(v) == "15"
-
-
-def _delta_precio_salida(v: models.Valoracion, anterior: models.Valoracion | None) -> tuple[str | None, str | None]:
-    """Diferencia de precio de salida respecto a otra valoración del mismo coche."""
-    if not (anterior and anterior.precio_salida and v.precio_salida):
-        return None, None
-    diff = anterior.precio_salida - v.precio_salida
-    if diff == 0:
-        return None, None
-    signo = "baja" if diff > 0 else "sube"
-    txt = f"{'↓' if diff > 0 else '↑'} {abs(diff):,.0f} €".replace(",", ".")
-    return txt, signo
+_tier_precio_salida = services.tier_precio_salida
+_en_precio = services.en_precio
+_delta_precio_salida = services.delta_precio_salida
 
 
 def _fila_valoracion(v: models.Valoracion) -> dict:
