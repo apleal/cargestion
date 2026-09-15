@@ -72,16 +72,14 @@ def coste_adquisicion(
 ) -> Decimal:
     """Todo lo que se paga para adquirir el coche (puja + comisión + fijos).
 
-    En REBU el IVA de la comisión no es deducible, así que se cuenta como coste.
+    El 21 % de IVA de la comisión de subasta es deducible para la empresa, así
+    que no cuenta como coste real: se usa el importe neto.
     """
     puja = Decimal(puja)
     if config.es_cuota_plana:
         return euros(puja + config.cuota_plana)
-    tramo = tramo_para(config, puja)
     neta = comision_neta(config, puja, descuento_pct)
-    factor_iva = config.iva if (tramo and tramo.aplica_iva) else Decimal("1")
-    comision_coste = euros(neta * factor_iva)
-    return euros(puja + comision_coste + config.conceptos_fijos)
+    return euros(puja + neta + config.conceptos_fijos)
 
 
 TARIFA_AUTO1_DIVISOR = Decimal("0.21")
@@ -159,8 +157,7 @@ def evaluar(
         adquisicion = euros(puja + config.cuota_plana)
     else:
         comision_n = comision_neta(config, puja, entrada.descuento_comision_pct)
-        factor_iva = config.iva if (tramo and tramo.aplica_iva) else Decimal("1")
-        comision_c = euros(comision_n * factor_iva)
+        comision_c = comision_n  # el IVA de la comisión es deducible; no es coste real
         fijos = euros(config.conceptos_fijos)
         adquisicion = euros(puja + comision_c + fijos)
 

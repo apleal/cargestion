@@ -51,7 +51,7 @@ def test_calcular_api_devuelve_escenarios(cliente):
     data = resp.json()
     assert len(data["escenarios"]) == 3
     assert data["escenarios"][0]["puja_maxima"] is not None
-    assert data["desglose"]["coste_adquisicion"] == "10643.48"
+    assert data["desglose"]["coste_adquisicion"] == "10541.47"
     conceptos = [x["concepto"] for x in data["preparacion"]]
     assert any("Pintura" in c and "4 " in c and "87" in c for c in conceptos)
     pintura = next(x for x in data["preparacion"] if "Pintura" in x["concepto"])

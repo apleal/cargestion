@@ -18,18 +18,19 @@ ARONA = EntradaValoracion(
 
 def test_desglose_valores_conocidos():
     d = evaluar(NORMAL, ARONA, Decimal("10000"))
-    # tramo 10.000-12.499 -> 416 neto -> 503,36 c/IVA
+    # tramo 10.000-12.499 -> 416 neto; el IVA de comisión y gestión es deducible,
+    # así que el coste real usa los importes netos (416 comisión, 125,47 gestión+tasa)
     assert d.comision_neta == Decimal("416.00")
-    assert d.comision_coste == Decimal("503.36")
-    assert d.conceptos_fijos == Decimal("140.12")
-    assert d.coste_adquisicion == Decimal("10643.48")
-    assert d.coste_total == Decimal("11928.48")
-    # margen bruto 15.000 - 10.643,48 = 4.356,52
-    assert d.margen_bruto == Decimal("4356.52")
-    # IVA REBU = 4.356,52 * 21/121
-    assert d.iva_rebu == Decimal("756.09")
-    assert d.margen_neto == Decimal("3600.43")
-    assert d.beneficio_neto == Decimal("2315.43")
+    assert d.comision_coste == Decimal("416.00")
+    assert d.conceptos_fijos == Decimal("125.47")
+    assert d.coste_adquisicion == Decimal("10541.47")
+    assert d.coste_total == Decimal("11826.47")
+    # margen bruto 15.000 - 10.541,47 = 4.458,53
+    assert d.margen_bruto == Decimal("4458.53")
+    # IVA REBU = 4.458,53 * 21/121
+    assert d.iva_rebu == Decimal("773.79")
+    assert d.margen_neto == Decimal("3684.74")
+    assert d.beneficio_neto == Decimal("2399.74")
 
 
 def test_rentabilidad_decreciente_con_la_puja():

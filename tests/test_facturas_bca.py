@@ -39,10 +39,12 @@ def test_factura_con_descuento_50():
 
 
 def test_coste_adquisicion_factura_vigente():
-    """F19624701: adjudicación 6.700 -> total pagado 7.310,81 €."""
+    """F19624701: adjudicación 6.700 -> factura BCA 7.310,81 € (con IVA), pero
+    el coste real es menor porque el 21% de la comisión y de los honorarios
+    de transferencia es IVA deducible (81,69 + 14,65 = 96,34 €)."""
     total = coste_adquisicion(NORMAL, Decimal("6700"))
-    # 6700 + 470,69 (389*1,21) + 140,12 = 7310,81
-    assert total == Decimal("7310.81")
+    # 6700 + 389 (comisión neta) + 125,47 (69,77 gestión neta + 55,70 tasa DGT) = 7214,47
+    assert total == Decimal("7214.47")
 
 
 def test_concurso_solo_cuota_plana():

@@ -136,7 +136,7 @@ class Command(BaseCommand):
         ConceptoFijo.objects.update_or_create(
             proveedor=bca,
             nombre="Honorarios de transferencia (con IVA)",
-            defaults={"importe": GESTION_CON_IVA},
+            defaults={"importe": GESTION_CON_IVA, "iva_deducible": True},
         )
         ConceptoFijo.objects.update_or_create(
             proveedor=bca,

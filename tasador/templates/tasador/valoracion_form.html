@@ -171,8 +171,8 @@
     } else {
       cabecera =
         fila('Adjudicación (puja)', nf(d.puja)+' €') +
-        fila('+ Comisión subasta ('+d.tramo+', c/IVA)', nf(d.comision_coste)+' €') +
-        fila('+ Gestión + tasa', nf(d.conceptos_fijos)+' €') +
+        fila('+ Comisión subasta ('+d.tramo+')', nf(d.comision_coste)+' €') +
+        fila('+ Gestión + tasa (IVA deducible descontado)', nf(d.conceptos_fijos)+' €') +
         fila('= Coste de adquisición', nf(d.coste_adquisicion)+' €','sum');
     }
     bd.innerHTML =

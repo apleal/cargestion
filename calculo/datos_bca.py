@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from .motor import euros
 from .tipos import ConfigProveedor, Tramo
 
 IVA = Decimal("1.21")
@@ -35,11 +36,15 @@ TRAMOS_BCA_OTROS: tuple[Tramo, ...] = (
 )
 
 # Conceptos fijos (todas las facturas, de 1.250 € a 9.550 €):
-#   honorarios de transferencia 69,77 € neto -> 84,42 € con IVA (no deducible REBU)
+#   honorarios de transferencia 69,77 € neto -> 84,42 € con IVA (deducible)
 #   tasa de transferencia (DGT)              -> 55,70 € no sujeta
 GESTION_CON_IVA = Decimal("84.42")
+GESTION_NETA = euros(GESTION_CON_IVA / Decimal("1.21"))  # 69,77 — recuperable
 TASA_DGT = Decimal("55.70")
-CONCEPTOS_FIJOS_BCA = GESTION_CON_IVA + TASA_DGT  # 140,12
+CONCEPTOS_FIJOS_BCA = GESTION_CON_IVA + TASA_DGT  # 140,12 — importe real de factura
+# Coste real para la empresa: el 21% de los honorarios se desgrava, la tasa
+# DGT no lleva IVA y se cuenta entera.
+CONCEPTOS_FIJOS_BCA_DEDUCIBLE = GESTION_NETA + TASA_DGT  # 125,47
 
 # "Concurso BCA": única cuota de 351 € que se suma al precio; nada más.
 CUOTA_CONCURSO_BCA = Decimal("351.00")
@@ -48,7 +53,7 @@ CUOTA_CONCURSO_BCA = Decimal("351.00")
 def config_bca_normal() -> ConfigProveedor:
     return ConfigProveedor(
         tramos=TRAMOS_BCA_OTROS,
-        conceptos_fijos=CONCEPTOS_FIJOS_BCA,
+        conceptos_fijos=CONCEPTOS_FIJOS_BCA_DEDUCIBLE,
         iva=IVA,
     )
 

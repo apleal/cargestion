@@ -48,6 +48,12 @@ def tarifa_transporte(proveedor, origen: str, fecha=None) -> TarifaTransporte | 
 
 
 def _conceptos_fijos_vigentes(proveedor: Proveedor, fecha=None) -> Decimal:
+    """Suma de conceptos fijos vigentes, en neto para los que llevan IVA deducible.
+
+    El IVA de conceptos como los honorarios de transferencia de BCA lo puede
+    desgravar la empresa, así que no cuenta como coste real (a diferencia de
+    la tasa DGT, que no está sujeta a IVA y no tiene nada que desgravar).
+    """
     fecha = fecha or timezone.localdate()
     total = Decimal("0")
     for c in proveedor.conceptos_fijos.all():
@@ -55,7 +61,8 @@ def _conceptos_fijos_vigentes(proveedor: Proveedor, fecha=None) -> Decimal:
             continue
         if c.vigencia_hasta and fecha > c.vigencia_hasta:
             continue
-        total += c.importe
+        importe = euros(c.importe / Decimal("1.21")) if c.iva_deducible else c.importe
+        total += importe
     return total
 
 

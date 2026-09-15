@@ -201,6 +201,11 @@ class ConceptoFijo(models.Model):
     )
     nombre = models.CharField(max_length=80)
     importe = models.DecimalField(**DEC, help_text="Importe final (con IVA si lo lleva).")
+    iva_deducible = models.BooleanField(
+        default=False,
+        help_text="El importe lleva 21% de IVA que la empresa puede desgravar; "
+        "el coste real que se usa para la rentabilidad es el neto, no el importe de arriba.",
+    )
     vigencia_desde = models.DateField(null=True, blank=True)
     vigencia_hasta = models.DateField(null=True, blank=True)
     history = HistoricalRecords()
