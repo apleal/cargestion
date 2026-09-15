@@ -2,7 +2,13 @@
 {% load tasador_extras %}
 {% block title %}{% if valoracion %}Valoración{% else %}Nueva valoración{% endif %} · Tasador{% endblock %}
 {% block content %}
+{% if valoracion.sesion_subasta %}
+<p class="mono"><a href="{% url 'sesion_detalle' valoracion.sesion_subasta.pk %}">← Volver a la subasta ({{ valoracion.sesion_subasta }})</a></p>
+{% elif valoracion %}
+<p class="mono"><a href="{% url 'valoracion_lista' %}">← Volver a valoraciones</a></p>
+{% endif %}
 <h1>{% if valoracion %}{{ valoracion.vehiculo }}{% else %}Nueva valoración{% endif %}</h1>
+{% if valoracion and valoracion.kilometros %}<p class="mono ayuda">{{ valoracion.kilometros|miles }} km</p>{% endif %}
 
 <form method="post" id="valForm">
   {% csrf_token %}
@@ -37,12 +43,9 @@
           <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
           <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>
           <p><label>Piezas de pintura</label>{{ form.piezas_pintura }}</p>
-          {% if not valoracion or valoracion.tipo_subasta.modo != "iva_anuncio" %}
-          <p><label>Fecha valoración</label>{{ form.fecha_valoracion }}</p>
-          <p><label>Fecha subasta</label>{{ form.fecha_subasta }}</p>
-          {% else %}
-          <div>{{ form.fecha_valoracion.as_hidden }}{{ form.fecha_subasta.as_hidden }}</div>
-          {% endif %}
+          {# Fecha valoración/subasta: de momento no hacen falta en el día a día;
+             se mandan ocultas para no perder el valor por defecto al guardar. #}
+          <div hidden>{{ form.fecha_valoracion.as_hidden }}{{ form.fecha_subasta.as_hidden }}</div>
         </div>
       </div>
 

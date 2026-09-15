@@ -20,4 +20,5 @@ urlpatterns = [
 
     path("vehiculos/<int:pk>/", views.vehiculo_detalle, name="vehiculo_detalle"),
     path("buscar/", views.buscar_vehiculo, name="buscar_vehiculo"),
+    path("configuracion/transporte/", views.config_transporte, name="config_transporte"),
 ]

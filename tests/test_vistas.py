@@ -281,6 +281,72 @@ def test_enlace_buscar_comparables_en_rejilla_y_ficha(cliente):
     assert "ver precios parecidos" in ficha
 
 
+def test_guardar_costes_no_borra_los_km(cliente):
+    """Bug real: guardar la ficha de costes (p. ej. al tocar el transporte)
+    no debe vaciar los km del coche."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    bca = Proveedor.objects.get(nombre="BCA")
+    s = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.get(nombre="BCA Barcelona"), fecha="2026-09-15"
+    )
+    cliente.post(
+        reverse("sesion_pegar", args=[s.pk]),
+        {"texto": LINEA},  # Citroen C1, 79328 km
+    )
+    v = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+    assert v.kilometros == 79328
+
+    form_data = {
+        "proveedor": v.proveedor_id, "tipo_subasta": v.tipo_subasta_id,
+        "regimen_fiscal": "rebu", "iva_anuncio": "0", "precio_salida": "0",
+        "precio_venta_estimado": "9000", "descuento_comision_pct": "0",
+        "estado_carroceria": v.estado_carroceria_id, "piezas_pintura": "4",
+        "fecha_valoracion": "2026-09-15",
+        "coste_alberto": "50", "coste_gasolina": "40", "coste_pintura_por_pieza": "87",
+        "coste_garantia": "225", "coste_mecanica": "200", "coste_cambio_titularidad": "72",
+        "coste_transporte": "80",  # <- lo que se estaba tocando cuando fallaba
+        "coste_itv": "0", "coste_tapiceria": "0", "coste_tintado": "0", "coste_otros": "0",
+        "estado": v.estado_id,
+    }
+    resp = cliente.post(reverse("valoracion_editar", args=[v.pk]), form_data)
+    assert resp.status_code == 302
+
+    v.refresh_from_db()
+    assert v.kilometros == 79328  # no se ha borrado
+    assert v.coste_transporte == Decimal("80.00")
+
+
+def test_config_transporte_actualiza_precio_por_zona(cliente):
+    from tasador.models import Proveedor, TarifaTransporte
+
+    bca = Proveedor.objects.get(nombre="BCA")
+    barcelona = TarifaTransporte.objects.get(proveedor=bca, origen="Barcelona")
+    resp = cliente.post(
+        reverse("config_transporte"),
+        {"proveedor": bca.pk, f"precio_{barcelona.pk}": "80"},
+    )
+    assert resp.status_code == 302
+    barcelona.refresh_from_db()
+    assert barcelona.precio == Decimal("80.00")
+
+
+def test_ficha_costes_enlaza_de_vuelta_a_la_subasta(cliente):
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    bca = Proveedor.objects.get(nombre="BCA")
+    s = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.get(nombre="BCA Madrid"), fecha="2026-09-15"
+    )
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+
+    html = cliente.get(reverse("valoracion_editar", args=[v.pk])).content.decode()
+    assert reverse("sesion_detalle", args=[s.pk]) in html
+    assert "Volver a la subasta" in html
+    assert "<label>Fecha valoración</label>" not in html
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

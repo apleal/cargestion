@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Tarifas de transporte · Tasador{% endblock %}
+{% block content %}
+<h1>Tarifas de transporte</h1>
+<p class="mono ayuda">Un precio por zona, en un solo sitio. Cambiarlo aquí afecta a los coches nuevos; los ya valorados guardan el importe de entonces, no se tocan solos.</p>
+
+<div class="card">
+  <form method="get" style="margin-bottom:14px">
+    <label>Proveedor</label>
+    <select name="proveedor" onchange="this.form.submit()" style="max-width:220px">
+      {% for p in proveedores %}
+      <option value="{{ p.pk }}" {% if proveedor.pk == p.pk %}selected{% endif %}>{{ p.nombre }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if proveedor %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="proveedor" value="{{ proveedor.pk }}">
+    <div class="tw"><table>
+      <thead><tr><th>Zona</th><th class="num">Precio (€, sin IVA)</th></tr></thead>
+      <tbody>
+        {% for t in tarifas %}
+        <tr>
+          <td>{{ t.origen }}</td>
+          <td class="num"><input type="number" step="10" name="precio_{{ t.pk }}" value="{{ t.precio|floatformat:2 }}" style="max-width:140px;text-align:right"></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="2" class="mono">Sin zonas todavía para {{ proveedor.nombre }}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+
+    <h2 style="margin-top:18px">Añadir zona nueva</h2>
+    <div class="costs-grid">
+      <p><label>Zona</label><input type="text" name="nueva_zona" placeholder="p. ej. Galicia"></p>
+      <p><label>Precio (€)</label><input type="number" step="10" name="nuevo_precio"></p>
+    </div>
+
+    <button type="submit" class="primary" style="margin-top:12px">Guardar cambios</button>
+  </form>
+  {% else %}
+  <p class="mono">Este proveedor no usa transporte por zona (p. ej. Auto1, que usa IVA del anuncio).</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -510,6 +511,59 @@ def buscar_vehiculo(request):
         )
     messages.warning(request, f'No se encontró ningún coche con "{q}".')
     return redirect(request.META.get("HTTP_REFERER") or "panel")
+
+
+@login_required
+def config_transporte(request):
+    """Tarifas de transporte por zona, en una sola pantalla. Cambiar un precio
+    aquí afecta a los coches nuevos; los ya valorados guardan su importe de
+    entonces (no se alteran solos)."""
+    proveedores = models.Proveedor.objects.filter(activo=True).order_by("nombre")
+    proveedor = (
+        proveedores.filter(pk=request.POST.get("proveedor") or request.GET.get("proveedor")).first()
+        or proveedores.filter(nombre="BCA").first()
+        or proveedores.first()
+    )
+
+    if request.method == "POST" and proveedor:
+        tarifas = list(proveedor.tarifas_transporte.all())
+        cambios = 0
+        for t in tarifas:
+            valor = request.POST.get(f"precio_{t.pk}")
+            if valor is None:
+                continue
+            try:
+                nuevo = Decimal(valor.replace(",", "."))
+            except InvalidOperation:
+                continue
+            if nuevo != t.precio:
+                t.precio = nuevo
+                t.save(update_fields=["precio"])
+                cambios += 1
+        nueva_zona = (request.POST.get("nueva_zona") or "").strip()
+        nuevo_precio = request.POST.get("nuevo_precio")
+        if nueva_zona and nuevo_precio:
+            try:
+                models.TarifaTransporte.objects.create(
+                    proveedor=proveedor, origen=nueva_zona,
+                    precio=Decimal(nuevo_precio.replace(",", ".")),
+                )
+                cambios += 1
+            except InvalidOperation:
+                pass
+        if cambios:
+            messages.success(request, f"{cambios} tarifa(s) de transporte actualizada(s).")
+        return redirect(f"{reverse('config_transporte')}?proveedor={proveedor.pk}")
+
+    tarifas = (
+        proveedor.tarifas_transporte.filter(activa=True).order_by("origen")
+        if proveedor else []
+    )
+    return render(
+        request,
+        "tasador/config_transporte.html",
+        {"proveedores": proveedores, "proveedor": proveedor, "tarifas": tarifas},
+    )
 
 
 @login_required
