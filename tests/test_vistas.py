@@ -89,8 +89,9 @@ def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
     import re
     thead = re.search(r"<thead>(.*?)</thead>", html, re.S).group(1)
     cols = [c.strip() for c in re.findall(r"<th[^>]*>(.*?)</th>", thead)]
-    # la puja debe ir justo despues de Km, y no debe haber columna "Estado"
-    assert cols[:7] == ["Lote", "Coche", "Matrícula", "Km", "Puja 15%", "Puja 12%", "Puja 10%"]
+    # el boton Costes va primero (para poder pulsarlo con tiempo), luego la
+    # puja justo despues de Km, y no debe haber columna "Estado"
+    assert cols[:8] == ["", "Lote", "Coche", "Matrícula", "Km", "Puja 15%", "Puja 12%", "Puja 10%"]
     assert "Estado" not in cols
     # boton Costes, no enlace de texto
     assert 'class="btn mini-btn"' in html
