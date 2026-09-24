@@ -400,6 +400,79 @@ def test_ficha_costes_enlaza_de_vuelta_a_la_subasta(cliente):
     assert "<label>Fecha valoración</label>" not in html
 
 
+def test_eliminar_vehiculo_borra_coche_y_tasaciones(cliente):
+    """Coches ya vendidos (p. ej. de Auto1) se pueden quitar del todo."""
+    from tasador.models import Valoracion, Vehiculo
+
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+    veh_pk = v.vehiculo_id
+
+    # por GET no se puede borrar (evita clics/prefetch accidentales)
+    assert cliente.get(reverse("vehiculo_eliminar", args=[veh_pk])).status_code == 405
+
+    resp = cliente.post(reverse("vehiculo_eliminar", args=[veh_pk]))
+    assert resp.status_code == 302
+    assert not Vehiculo.objects.filter(pk=veh_pk).exists()
+    assert not Valoracion.objects.filter(vehiculo_id=veh_pk).exists()
+
+
+def test_favorito_se_marca_y_persiste_en_la_retasacion(cliente):
+    """El favorito es del coche, no de la tasación: sobrevive a un repegado."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    s1 = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s1.pk]), {"texto": LINEA})
+    v1 = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+    veh_pk = v1.vehiculo_id
+
+    resp = cliente.post(
+        reverse("vehiculo_favorito_toggle", args=[veh_pk]),
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"favorito": True}
+    v1.vehiculo.refresh_from_db()
+    assert v1.vehiculo.favorito is True
+
+    # se retasa el mismo coche (misma matrícula) en otra sesión
+    bca = Proveedor.objects.get(nombre="BCA")
+    s2 = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.first(), fecha="2026-09-20"
+    )
+    cliente.post(reverse("sesion_pegar", args=[s2.pk]), {"texto": LINEA})
+    v2 = Valoracion.objects.get(vehiculo__matricula="9553LDF", sesion_subasta=s2)
+    assert v2.vehiculo_id == veh_pk
+    assert v2.vehiculo.favorito is True
+
+    # desmarcar
+    resp = cliente.post(
+        reverse("vehiculo_favorito_toggle", args=[veh_pk]),
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+    assert resp.json() == {"favorito": False}
+
+
+def test_favoritos_lista_muestra_coches_marcados(cliente):
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+
+    resp = cliente.get(reverse("favoritos_lista"))
+    assert "Sin favoritos todavía" in resp.content.decode()
+
+    cliente.post(
+        reverse("vehiculo_favorito_toggle", args=[v.vehiculo_id]),
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+    html = cliente.get(reverse("favoritos_lista")).content.decode()
+    assert "Citroën" in html
+    assert "9553LDF" in html
+
+
 def test_celda_origen_actualiza_transporte(cliente):
     from tasador.models import TarifaTransporte, Valoracion
 

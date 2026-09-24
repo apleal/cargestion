@@ -19,6 +19,9 @@ urlpatterns = [
     path("valoraciones/pegar/", views.pegar_lotes, name="pegar_lotes"),
 
     path("vehiculos/<int:pk>/", views.vehiculo_detalle, name="vehiculo_detalle"),
+    path("vehiculos/<int:pk>/eliminar/", views.vehiculo_eliminar, name="vehiculo_eliminar"),
+    path("vehiculos/<int:pk>/favorito/", views.vehiculo_favorito_toggle, name="vehiculo_favorito_toggle"),
+    path("favoritos/", views.favoritos_lista, name="favoritos_lista"),
     path("buscar/", views.buscar_vehiculo, name="buscar_vehiculo"),
     path("configuracion/transporte/", views.config_transporte, name="config_transporte"),
 ]

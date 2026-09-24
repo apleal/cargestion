@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Favoritos · Tasador{% endblock %}
+{% block content %}
+<h1>★ Favoritos</h1>
+<p class="mono ayuda">Coches marcados desde la rejilla, de cualquier subasta o proveedor. Se mantienen aunque el coche se retase.</p>
+<div class="card">
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Coche</th><th>Proveedor</th><th>Última subasta</th><th class="num">Km</th>
+      <th class="num">Salida</th><th>¿Comprable?</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for fila in filas %}
+      <tr>
+        <td><a href="{% url 'vehiculo_detalle' fila.vehiculo.pk %}">{{ fila.vehiculo }}</a></td>
+        <td>{% if fila.ultima %}{{ fila.ultima.proveedor.nombre }}{% else %}—{% endif %}</td>
+        <td>{% if fila.ultima.sesion_subasta %}{{ fila.ultima.sesion_subasta }}{% else %}—{% endif %}</td>
+        <td class="num">{{ fila.vehiculo.km_ultimo_conocido|miles }}</td>
+        <td class="num">{% if fila.ultima %}{{ fila.ultima.precio_salida|eur }}{% else %}—{% endif %}</td>
+        <td>{% if fila.ultima.tier %}<span class="pill t{{ fila.ultima.tier }}">🎯 {{ fila.ultima.tier }}%</span>{% elif fila.ultima.precio_salida %}<span class="pill no">✗ no llega</span>{% else %}—{% endif %}</td>
+        <td>{% if fila.ultima %}{{ fila.ultima.estado.nombre }}{% else %}—{% endif %}</td>
+        <td>
+          <form method="post" action="{% url 'vehiculo_favorito_toggle' fila.vehiculo.pk %}"
+                onsubmit="return confirm('¿Quitar {{ fila.vehiculo }} de favoritos?');">
+            {% csrf_token %}
+            <button type="submit" class="btn mini-btn">Quitar</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="mono">Sin favoritos todavía. Marca coches con la ★ de la rejilla.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -55,7 +55,13 @@
         {% for v in lotes %}
         {% with f=v.fila %}
         <tr data-row="{{ v.pk }}" {% if f.tier %}class="tier-{{ f.tier }}"{% endif %}>
-          <td><a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a></td>
+          <td class="acciones-fila">
+            <button type="button" class="fav-toggle {% if v.vehiculo.favorito %}activo{% endif %}"
+                    data-vehiculo="{{ v.vehiculo.pk }}" title="Marcar como favorito">
+              {% if v.vehiculo.favorito %}★{% else %}☆{% endif %}
+            </button>
+            <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
+          </td>
           <td class="num">
             <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
                    value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
@@ -146,6 +152,8 @@
   var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
   var plantillaUrl = "{% url 'celda_update' 999999 %}";  // .../valoraciones/999999/celda/
   function urlCelda(pk){ return plantillaUrl.replace('999999', pk); }
+  var plantillaFav = "{% url 'vehiculo_favorito_toggle' 999999 %}";  // .../vehiculos/999999/favorito/
+  function urlFavorito(pk){ return plantillaFav.replace('999999', pk); }
 
   function nf(x){
     if(x === null || x === undefined || x === '') return '—';
@@ -200,6 +208,21 @@
           setTimeout(function(){ tr.classList.remove('recalc'); }, 600);
         })
         .catch(function(){ el.classList.remove('guardando'); el.classList.add('err'); });
+    });
+  });
+
+  document.querySelectorAll('.fav-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pk = btn.dataset.vehiculo;
+      btn.disabled = true;
+      fetch(urlFavorito(pk), {method:'POST', headers:{'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          btn.disabled = false;
+          btn.classList.toggle('activo', j.favorito);
+          btn.textContent = j.favorito ? '★' : '☆';
+        })
+        .catch(function(){ btn.disabled = false; });
     });
   });
 

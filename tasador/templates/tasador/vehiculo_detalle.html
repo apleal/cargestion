@@ -2,11 +2,26 @@
 {% load tasador_extras %}
 {% block title %}{{ vehiculo }} · Tasador{% endblock %}
 {% block content %}
-<h1>{{ vehiculo }}</h1>
-<p class="mono">{{ vehiculo.marca }} {{ vehiculo.modelo }} {{ vehiculo.version }}
-  · {{ vehiculo.potencia_cv }} CV · {{ vehiculo.combustible }} · {{ vehiculo.anio }}
-  {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|miles }} km{% endif %}
-  {% if referencia %}· Ref. Auto1 <b>{{ referencia }}</b>{% endif %}</p>
+<div class="sesion-head">
+  <div>
+    <h1>{{ vehiculo }}</h1>
+    <p class="mono">{{ vehiculo.marca }} {{ vehiculo.modelo }} {{ vehiculo.version }}
+      · {{ vehiculo.potencia_cv }} CV · {{ vehiculo.combustible }} · {{ vehiculo.anio }}
+      {% if vehiculo.km_ultimo_conocido %}· {{ vehiculo.km_ultimo_conocido|miles }} km{% endif %}
+      {% if referencia %}· Ref. Auto1 <b>{{ referencia }}</b>{% endif %}</p>
+  </div>
+  <div class="acciones">
+    <form method="post" action="{% url 'vehiculo_favorito_toggle' vehiculo.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn">{% if vehiculo.favorito %}★ Quitar de favoritos{% else %}☆ Marcar favorito{% endif %}</button>
+    </form>
+    <form method="post" action="{% url 'vehiculo_eliminar' vehiculo.pk %}"
+          onsubmit="return confirm('¿Eliminar {{ vehiculo }} y sus {{ valoraciones|length }} tasación{{ valoraciones|length|pluralize:"es" }}? No se puede deshacer.');">
+      {% csrf_token %}
+      <button type="submit" class="btn peligro">Eliminar coche</button>
+    </form>
+  </div>
+</div>
 
 <div class="card">
   <h2>Histórico ({{ valoraciones|length }}) · de más antigua a más reciente</h2>

@@ -494,6 +494,52 @@ def vehiculo_detalle(request, pk):
 
 
 @login_required
+@require_POST
+def vehiculo_favorito_toggle(request, pk):
+    """Marca/desmarca un coche como favorito (☆/★ en la rejilla). Se marca el
+    coche entero, no la tasación, así que sobrevive a las retasaciones."""
+    veh = get_object_or_404(models.Vehiculo, pk=pk)
+    veh.favorito = not veh.favorito
+    veh.save(update_fields=["favorito"])
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"favorito": veh.favorito})
+    referer = request.META.get("HTTP_REFERER")
+    return redirect(referer) if referer else redirect("vehiculo_detalle", pk=veh.pk)
+
+
+@login_required
+def favoritos_lista(request):
+    """Coches marcados con ★, de cualquier proveedor, con su última tasación."""
+    vehiculos = (
+        models.Vehiculo.objects.filter(favorito=True)
+        .prefetch_related("valoraciones__estado", "valoraciones__sesion_subasta")
+        .order_by("marca", "modelo")
+    )
+    filas = []
+    for veh in vehiculos:
+        ultima = max(
+            veh.valoraciones.all(), key=lambda v: v.created_at, default=None
+        )
+        if ultima:
+            ultima.tier = _tier_precio_salida(ultima)
+        filas.append({"vehiculo": veh, "ultima": ultima})
+    return render(request, "tasador/favoritos_lista.html", {"filas": filas})
+
+
+@login_required
+@require_POST
+def vehiculo_eliminar(request, pk):
+    """Borra un coche y todas sus tasaciones (p. ej. un coche de Auto1 ya
+    vendido que no interesa seguir viendo en las listas)."""
+    veh = get_object_or_404(models.Vehiculo, pk=pk)
+    nombre = str(veh)
+    veh.valoraciones.all().delete()
+    veh.delete()
+    messages.success(request, f"{nombre} eliminado, junto con su histórico de tasaciones.")
+    return redirect("panel")
+
+
+@login_required
 def buscar_vehiculo(request):
     """Buscador por Ref. Auto1 o matrícula: lleva directo al histórico del coche."""
     q = (request.GET.get("q") or "").strip()

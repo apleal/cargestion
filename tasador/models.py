@@ -383,6 +383,10 @@ class Vehiculo(models.Model):
     fecha_primera_matriculacion = models.DateField(null=True, blank=True)
     anio = models.PositiveSmallIntegerField(null=True, blank=True)
     km_ultimo_conocido = models.PositiveIntegerField(null=True, blank=True)
+    favorito = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Marcado para seguirlo de cerca; se mantiene aunque se retase.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
