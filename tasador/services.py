@@ -308,6 +308,7 @@ def crear_valoracion_desde_lote(
     """
     similar = buscar_vehiculo_similar(
         matricula=lote.matricula,
+        referencia=lote.referencia,
         marca=lote.marca,
         modelo=lote.modelo,
         anio=lote.anio,

@@ -127,6 +127,58 @@ def test_retasacion_auto1_detecta_bajada_de_precio(cliente):
     assert "retasado" in grid
 
 
+def test_auto1_no_se_confunde_con_coche_parecido_de_bca(cliente):
+    """Bug real: un Citroën C1 2019 de BCA (con matrícula) y un Citroën C1
+    2019 de Auto1 (sin matrícula, km parecidos) son coches DISTINTOS -
+    Auto1 no debe colgarse del vehículo de BCA solo por marca/modelo/año/km."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    s_bca = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s_bca.pk]), {"texto": LINEA})
+    v_bca = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+    assert v_bca.vehiculo.km_ultimo_conocido == 79328
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s_auto1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-16"
+    )
+    # mismo marca/modelo/año, km dentro del margen del ±5% de matching -
+    # antes del fix esto se colgaba del coche de BCA de arriba.
+    linea_auto1 = "Citroën C1 1.0 VTI Feel\t4200\t0\tAP99999\t2019\t80000\tGasolina\tManual"
+    cliente.post(reverse("sesion_pegar", args=[s_auto1.pk]), {"texto": linea_auto1})
+
+    v_auto1 = Valoracion.objects.get(lote_id="AP99999")
+    assert v_auto1.vehiculo_id != v_bca.vehiculo_id
+    assert v_auto1.vehiculo.matricula == ""
+    assert v_auto1.valoracion_anterior is None
+
+
+def test_auto1_misma_referencia_enlaza_aunque_cambien_mucho_los_km(cliente):
+    """El código de referencia de Auto1 es el identificador fiable entre
+    escaneos, no el margen de km (que puede fallar si el coche recorre
+    mucho entre un escaneo y el siguiente)."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-10"
+    )
+    s2 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-20"
+    )
+    linea_1 = "Citroën C1 1.0 VTI Feel\t4200\t0\tAP99999\t2019\t50000\tGasolina\tManual"
+    # +15.000 km entre escaneos: muy por encima del margen de ±5%/2.000 km
+    linea_2 = "Citroën C1 1.0 VTI Feel\t3900\t0\tAP99999\t2019\t65000\tGasolina\tManual"
+
+    cliente.post(reverse("sesion_pegar", args=[s1.pk]), {"texto": linea_1})
+    v1 = Valoracion.objects.get(lote_id="AP99999", sesion_subasta=s1)
+    cliente.post(reverse("sesion_pegar", args=[s2.pk]), {"texto": linea_2})
+    v2 = Valoracion.objects.get(lote_id="AP99999", sesion_subasta=s2)
+
+    assert v2.vehiculo_id == v1.vehiculo_id
+    assert v2.valoracion_anterior_id == v1.pk
+
+
 def test_en_precio_se_marca_cuando_salida_por_debajo_de_puja(cliente):
     from tasador.models import Proveedor, SesionSubasta, Valoracion
 
