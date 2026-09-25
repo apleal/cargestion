@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Count, F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -189,13 +190,22 @@ def sesion_detalle(request, pk):
             v.historial = []
         lotes = todos
 
+    total_lotes = len(lotes)
+    paginador = Paginator(lotes, 50)
+    pagina = paginador.get_page(request.GET.get("page"))
+
     zonas = list(
         sesion.proveedor.tarifas_transporte.filter(activa=True)
         .values_list("origen", flat=True)
     )
     ctx = {
         "sesion": sesion,
-        "lotes": lotes,
+        "lotes": pagina,
+        "pagina": pagina,
+        "total_lotes": total_lotes,
+        "rango_paginas": paginador.get_elided_page_range(
+            pagina.number, on_each_side=2, on_ends=1
+        ) if paginador.num_pages > 1 else [],
         "estados": models.EstadoValoracion.objects.all(),
         "carrocerias": models.EstadoCarroceria.objects.all(),
         "zonas_transporte": zonas,

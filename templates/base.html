@@ -34,7 +34,7 @@
 </ul>
 {% endif %}
 
-<main class="wrap">
+<main class="wrap{% block wrap_extra %}{% endblock %}">
   {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}

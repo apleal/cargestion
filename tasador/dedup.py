@@ -39,13 +39,16 @@ def buscar_vehiculo_similar(
         )
         if anterior:
             return anterior.vehiculo
-    if marca and modelo and anio:
+    if marca and modelo and anio and not matricula:
+        # El emparejamiento "aproximado" (sin identificador fiable) solo tiene
+        # sentido cuando no hay matrícula, es decir, casi siempre Auto1. Si la
+        # línea SÍ trae matrícula y no se ha encontrado arriba, es un coche
+        # nuevo de verdad: forzar aquí el fuzzy match fusionaría coches BCA
+        # distintos que comparten marca/modelo/año y km parecidos (p. ej. una
+        # flota con varios SEAT Ibiza del mismo año).
         qs = Vehiculo.objects.filter(
-            marca__iexact=marca, modelo__iexact=modelo, anio=anio
+            marca__iexact=marca, modelo__iexact=modelo, anio=anio, matricula=""
         )
-        # No cruzar entre coches con matrícula real (BCA) y sin ella (Auto1):
-        # aunque coincidan marca/modelo/año/km, son de proveedores distintos.
-        qs = qs.filter(matricula="") if not matricula else qs.exclude(matricula="")
         if km:
             # mismo coche si los km están dentro de ±5 % (o ±2.000)
             margen = max(int(km * 0.05), 2000)

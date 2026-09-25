@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% load tasador_extras %}
 {% block title %}{{ sesion }} · Tasador{% endblock %}
+{% block wrap_extra %} wrap-ancho{% endblock %}
 {% block content %}
 <div class="sesion-head">
   <div>
     <h1>{{ sesion.ubicacion.nombre }} · {{ sesion.fecha|date:"d/m/Y" }}</h1>
     <p class="mono">{{ sesion.proveedor.nombre }} · {{ sesion.hora_inicio|time:"H:i" }}–{{ sesion.hora_fin|time:"H:i" }}
-      · {{ lotes|length }} lote{{ lotes|length|pluralize }}
+      · {{ total_lotes }} lote{{ total_lotes|pluralize }}
       {% if sesion.url %}· <a href="{{ sesion.url }}" target="_blank" rel="noopener">venta en {{ sesion.proveedor.nombre }} ↗</a>{% endif %}</p>
   </div>
   <div class="acciones">
@@ -37,18 +38,19 @@
 </form>
 
 <div class="card">
-  <div class="tw grid-wrap">
+  {% include "tasador/_paginacion.html" %}
+  <div class="tw">
     <table class="rejilla">
       <thead>
         <tr>
           <th></th>
-          <th>Lote</th><th>Coche</th><th>{% if es_auto1 %}Ref. Auto1{% else %}Matrícula{% endif %}</th><th class="num">Km</th>
+          <th class="col-sec">Lote</th><th>Coche</th><th class="col-sec">{% if es_auto1 %}Ref. Auto1{% else %}Matrícula{% endif %}</th><th class="num">Km</th>
           {% if es_auto1 %}<th class="num">Salida</th>{% endif %}
-          <th class="num destacado puja-15">Puja 15%</th><th class="num destacado">Puja 12%</th><th class="num destacado">Puja 10%</th>
+          <th class="num destacado puja-15">Puja 15%</th><th class="num destacado col-sec">Puja 12%</th><th class="num destacado col-sec">Puja 10%</th>
           <th class="num">Venta €</th>
-          {% if es_auto1 %}<th class="num">IVA anuncio</th>{% else %}<th>Origen</th><th class="num">Transp. <a href="{% url 'config_transporte' %}" title="Editar tarifas de transporte">⚙️</a></th>{% endif %}
-          <th>Carrocería</th><th class="num">Piezas</th>
-          <th class="num">Beneficio</th><th class="num">Rent.</th>
+          {% if es_auto1 %}<th class="num col-sec">IVA anuncio</th>{% else %}<th class="col-sec">Origen</th><th class="num col-sec">Transp. <a href="{% url 'config_transporte' %}" title="Editar tarifas de transporte">⚙️</a></th>{% endif %}
+          <th class="col-sec">Carrocería</th><th class="num col-sec">Piezas</th>
+          <th class="num col-sec">Beneficio</th><th class="num col-sec">Rent.</th>
         </tr>
       </thead>
       <tbody>
@@ -62,7 +64,7 @@
             </button>
             <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
           </td>
-          <td class="num">
+          <td class="num col-sec">
             <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
                    value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
           </td>
@@ -85,7 +87,7 @@
             </div>
             {% endif %}
           </td>
-          <td class="mono">{{ v.vehiculo.matricula|default:v.lote_id }}</td>
+          <td class="mono col-sec">{{ v.vehiculo.matricula|default:v.lote_id }}</td>
           <td class="num mono">{{ v.kilometros|miles }}</td>
           {% if es_auto1 %}
           <td class="num mono salida">
@@ -94,8 +96,8 @@
           </td>
           {% endif %}
           <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>
-          <td class="num destacado puja-12">{{ f.puja_12|eur }}</td>
-          <td class="num destacado puja-10">{{ f.puja_10|eur }}</td>
+          <td class="num destacado puja-12 col-sec">{{ f.puja_12|eur }}</td>
+          <td class="num destacado puja-10 col-sec">{{ f.puja_10|eur }}</td>
           <td class="num venta-cell">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
@@ -103,12 +105,12 @@
                title="Buscar precios de coches parecidos">🔍</a>
           </td>
           {% if es_auto1 %}
-          <td class="num">
+          <td class="num col-sec">
             <input class="celda venta" data-campo="iva_anuncio" data-val="{{ v.pk }}"
                    value="{{ v.iva_anuncio|floatformat:2 }}" inputmode="decimal">
           </td>
           {% else %}
-          <td>
+          <td class="col-sec">
             <select class="celda origen" data-campo="zona_origen" data-val="{{ v.pk }}">
               {% for z in zonas_transporte %}
               <option value="{{ z }}" {% if v.zona_origen == z %}selected{% endif %}>{{ z }}</option>
@@ -119,21 +121,21 @@
               <option value="">— manual</option>
             </select>
           </td>
-          <td class="num mono transporte">{{ f.transporte|eur }}</td>
+          <td class="num mono transporte col-sec">{{ f.transporte|eur }}</td>
           {% endif %}
-          <td>
+          <td class="col-sec">
             <select class="celda" data-campo="estado_carroceria_id" data-val="{{ v.pk }}">
               {% for c in carrocerias %}
               <option value="{{ c.pk }}" {% if v.estado_carroceria_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
               {% endfor %}
             </select>
           </td>
-          <td class="num">
+          <td class="num col-sec">
             <input class="celda mini piezas" data-campo="piezas_pintura" data-val="{{ v.pk }}"
                    value="{{ v.piezas_pintura }}" inputmode="numeric">
           </td>
-          <td class="num beneficio">{{ f.beneficio|eur }}</td>
-          <td class="num rent">{{ f.rentabilidad }}</td>
+          <td class="num beneficio col-sec">{{ f.beneficio|eur }}</td>
+          <td class="num rent col-sec">{{ f.rentabilidad }}</td>
         </tr>
         {% endwith %}
         {% empty %}
@@ -142,7 +144,8 @@
       </tbody>
     </table>
   </div>
-  <p class="mono ayuda">Escribe la <b>Venta</b> y la puja aparece. Cambia origen, carrocería o piezas y se recalcula. El botón <b>Costes</b> abre el ajuste fino de cada coche (incluido su estado: interesante, descartado…).</p>
+  {% include "tasador/_paginacion.html" %}
+  <p class="mono ayuda">Escribe la <b>Venta</b> y la puja aparece. Cambia origen, carrocería o piezas y se recalcula. El botón <b>Costes</b> abre el ajuste fino de cada coche (incluido su estado: interesante, descartado…). En pantallas pequeñas se ocultan columnas secundarias; desliza la tabla en horizontal para verlas todas.</p>
 </div>
 {% endblock %}
 

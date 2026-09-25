@@ -153,6 +153,24 @@ def test_auto1_no_se_confunde_con_coche_parecido_de_bca(cliente):
     assert v_auto1.valoracion_anterior is None
 
 
+def test_dos_bca_parecidos_no_se_fusionan_sin_coincidir_matricula(cliente):
+    """Bug real (encontrado probando la paginación con una flota sintética):
+    dos SEAT Ibiza 2020 de BCA, con matrícula distinta y km parecidos, son
+    coches DISTINTOS - no deben fusionarse por marca/modelo/año/km cuando
+    cada uno ya trae su propia matrícula real (aunque no coincida con nada)."""
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    linea_1 = "1\tSEAT Ibiza 1.0 TSI Style\t85 KW (115 CV), Gasolina, Manual, 40000 Km, 2020\t0001AAA\t10/03/2020\tBCA Madrid"
+    linea_2 = "2\tSEAT Ibiza 1.0 TSI Style\t85 KW (115 CV), Gasolina, Manual, 40500 Km, 2020\t0002AAA\t10/03/2020\tBCA Madrid"
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": linea_1 + "\n" + linea_2})
+
+    v1 = Valoracion.objects.get(vehiculo__matricula="0001AAA")
+    v2 = Valoracion.objects.get(vehiculo__matricula="0002AAA")
+    assert v1.vehiculo_id != v2.vehiculo_id
+    assert v2.valoracion_anterior is None
+
+
 def test_auto1_misma_referencia_enlaza_aunque_cambien_mucho_los_km(cliente):
     """El código de referencia de Auto1 es el identificador fiable entre
     escaneos, no el margen de km (que puede fallar si el coche recorre
@@ -471,6 +489,30 @@ def test_favoritos_lista_muestra_coches_marcados(cliente):
     html = cliente.get(reverse("favoritos_lista")).content.decode()
     assert "Citroën" in html
     assert "9553LDF" in html
+
+
+def test_rejilla_pagina_de_50_en_50(cliente):
+    """Rejilla usable: 50 coches por página, con enlaces de página 1, 2..."""
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    lineas = "\n".join(
+        f"{i}\tSEAT Ibiza 1.0 TSI Style\t85 KW (115 CV), Gasolina, Manual, {40000+i} Km, 2020"
+        f"\t{i:04d}AAA\t10/03/2020\tBCA Madrid"
+        for i in range(1, 52)  # 51 coches -> 2 páginas
+    )
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": lineas})
+    assert Valoracion.objects.filter(sesion_subasta=s).count() == 51
+
+    pag1 = cliente.get(reverse("sesion_detalle", args=[s.pk]))
+    html1 = pag1.content.decode()
+    assert "51 lotes" in html1
+    assert html1.count('<tr data-row="') == 50
+    assert 'href="?page=2"' in html1
+
+    pag2 = cliente.get(reverse("sesion_detalle", args=[s.pk]), {"page": 2})
+    html2 = pag2.content.decode()
+    assert html2.count('<tr data-row="') == 1
 
 
 def test_celda_origen_actualiza_transporte(cliente):
