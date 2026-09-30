@@ -387,6 +387,15 @@ class Vehiculo(models.Model):
         default=False, db_index=True,
         help_text="Marcado para seguirlo de cerca; se mantiene aunque se retase.",
     )
+    mds_modelo = models.PositiveSmallIntegerField(
+        "MDS modelo", null=True, blank=True,
+        help_text="Market Days Supply: coches iguales en venta ÷ ventas medias/día "
+        "(últimos 45 días). Dato manual, se puede dejar en blanco.",
+    )
+    mds_similar = models.PositiveSmallIntegerField(
+        "MDS similar", null=True, blank=True,
+        help_text="Igual que MDS modelo, pero contando coches similares (no idénticos).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 

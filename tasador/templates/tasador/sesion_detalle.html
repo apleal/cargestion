@@ -11,6 +11,13 @@
       {% if sesion.url %}· <a href="{{ sesion.url }}" target="_blank" rel="noopener">venta en {{ sesion.proveedor.nombre }} ↗</a>{% endif %}</p>
   </div>
   <div class="acciones">
+    {% if es_auto1 %}
+      {% if ver_vendidos %}
+      <a class="btn" href="?">← Ver activos</a>
+      {% else %}
+      <a class="btn" href="?vendidos=1">Ver vendidos ({{ n_vendidos }})</a>
+      {% endif %}
+    {% endif %}
     <a class="btn" href="{% url 'sesion_sala' sesion.pk %}">Sala de pujas</a>
   </div>
 </div>
@@ -63,6 +70,10 @@
               {% if v.vehiculo.favorito %}★{% else %}☆{% endif %}
             </button>
             <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
+            {% if es_auto1 and estado_vendido and not ver_vendidos %}
+            <button type="button" class="btn mini-btn vendido-toggle" data-valoracion="{{ v.pk }}"
+                    title="Marcar como vendido y quitarlo de la lista">Vendido</button>
+            {% endif %}
           </td>
           <td class="num col-sec">
             <input class="celda mini" data-campo="orden_lote" data-val="{{ v.pk }}"
@@ -228,6 +239,26 @@
         .catch(function(){ btn.disabled = false; });
     });
   });
+
+  {% if estado_vendido %}
+  var idVendido = "{{ estado_vendido.pk }}";
+  document.querySelectorAll('.vendido-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!confirm('¿Marcar como vendido? Se quita de la lista (se puede consultar en "Ver vendidos").')) return;
+      var pk = btn.dataset.valoracion;
+      var body = new URLSearchParams({campo: 'estado_id', valor: idVendido});
+      btn.disabled = true;
+      fetch(urlCelda(pk), {method:'POST', body: body, headers:{'X-CSRFToken': csrf}})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j.error){ btn.disabled = false; return; }
+          var tr = document.querySelector('tr[data-row="'+pk+'"]');
+          if(tr) tr.remove();
+        })
+        .catch(function(){ btn.disabled = false; });
+    });
+  });
+  {% endif %}
 
   document.querySelectorAll('.toggle-historial').forEach(function(btn){
     btn.addEventListener('click', function(){

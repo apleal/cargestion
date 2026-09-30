@@ -2,6 +2,23 @@
 {% load tasador_extras %}
 {% block title %}{{ vehiculo }} · Tasador{% endblock %}
 {% block content %}
+<div class="card mds-card">
+  <div class="mds-cabecera">
+    <span class="mds-titulo">Capacidad de suministro (MDS)</span>
+    <span class="mds-ayuda" title="Market Days Supply: coches iguales/similares en venta ÷ ventas medias al día en los últimos 45 días. Referencia: ~60 días para el inventario total de usados.">?</span>
+  </div>
+  <form method="post" action="{% url 'vehiculo_actualizar_mds' vehiculo.pk %}" class="mds-form">
+    {% csrf_token %}
+    <label>Modelo
+      <input type="number" name="mds_modelo" min="0" placeholder="—" value="{{ vehiculo.mds_modelo|default_if_none:'' }}">
+    </label>
+    <label>Similar
+      <input type="number" name="mds_similar" min="0" placeholder="—" value="{{ vehiculo.mds_similar|default_if_none:'' }}">
+    </label>
+    <button type="submit" class="btn mini-btn">Guardar</button>
+  </form>
+</div>
+
 <div class="sesion-head">
   <div>
     <h1>{{ vehiculo }}</h1>

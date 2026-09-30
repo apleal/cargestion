@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -130,12 +131,30 @@ def panel(request):
 # --------------------------------------------------------------------------
 @login_required
 def sesion_lista(request):
-    sesiones = (
-        models.SesionSubasta.objects.select_related("ubicacion", "proveedor")
-        .annotate(n_lotes=Count("valoraciones"))
-        .order_by("-fecha")
+    """Por defecto solo la semana en curso (lunes-domingo): las subastas de
+    BCA son puntuales y las pasadas ya no sirven de nada en el día a día.
+    Auto1 es la excepción: es una sesión única y continua, así que se ve
+    siempre. ?todas=1 quita el filtro para consultar el histórico completo."""
+    ver_todas = request.GET.get("todas") == "1"
+    sesiones = models.SesionSubasta.objects.select_related(
+        "ubicacion", "proveedor"
+    ).annotate(n_lotes=Count("valoraciones"))
+
+    if not ver_todas:
+        hoy = timezone.localdate()
+        inicio_semana = hoy - timedelta(days=hoy.weekday())
+        fin_semana = inicio_semana + timedelta(days=6)
+        sesiones = sesiones.filter(
+            Q(fecha__gte=inicio_semana, fecha__lte=fin_semana)
+            | Q(proveedor__nombre="Auto1")
+        )
+
+    sesiones = sesiones.order_by("-fecha")
+    return render(
+        request,
+        "tasador/sesion_lista.html",
+        {"sesiones": sesiones, "ver_todas": ver_todas},
     )
-    return render(request, "tasador/sesion_lista.html", {"sesiones": sesiones})
 
 
 @login_required
@@ -168,6 +187,8 @@ def sesion_detalle(request, pk):
     for v in todos:
         v.fila = _fila_valoracion(v)
 
+    ver_vendidos = request.GET.get("vendidos") == "1"
+    n_vendidos = 0
     if es_auto1:
         # Auto1 es un mercado continuo: el mismo coche se vuelve a pegar varias
         # veces. Se agrupa por vehículo, se muestra solo el último escaneo como
@@ -185,6 +206,14 @@ def sesion_detalle(request, pk):
             principal.historial = historial
             lotes.append(principal)
         lotes.sort(key=lambda v: v.created_at, reverse=True)
+
+        # Coches ya vendidos (estado final): se quitan de la vista activa para
+        # no acumular basura en el listado continuo, pero no se borran - se
+        # pueden consultar con "Ver vendidos".
+        vendidos = [v for v in lotes if v.estado_id and v.estado.es_final]
+        activos = [v for v in lotes if not (v.estado_id and v.estado.es_final)]
+        n_vendidos = len(vendidos)
+        lotes = vendidos if ver_vendidos else activos
     else:
         for v in todos:
             v.historial = []
@@ -210,6 +239,9 @@ def sesion_detalle(request, pk):
         "carrocerias": models.EstadoCarroceria.objects.all(),
         "zonas_transporte": zonas,
         "es_auto1": es_auto1,
+        "ver_vendidos": ver_vendidos,
+        "n_vendidos": n_vendidos,
+        "estado_vendido": models.EstadoValoracion.objects.filter(nombre="Vendido").first(),
         "pegar_form": PegarLotesForm(),
     }
     return render(request, "tasador/sesion_detalle.html", ctx)
@@ -473,6 +505,28 @@ def calcular_api(request):
             },
         }
     )
+
+
+@login_required
+@require_POST
+def vehiculo_actualizar_mds(request, pk):
+    """Guarda el MDS (Market Days Supply) manual del coche, editable desde su
+    ficha. Campo opcional: si se deja en blanco se borra."""
+    veh = get_object_or_404(models.Vehiculo, pk=pk)
+
+    def _entero_o_none(valor):
+        valor = (valor or "").strip()
+        if not valor:
+            return None
+        try:
+            return max(0, int(valor))
+        except ValueError:
+            return None
+
+    veh.mds_modelo = _entero_o_none(request.POST.get("mds_modelo"))
+    veh.mds_similar = _entero_o_none(request.POST.get("mds_similar"))
+    veh.save(update_fields=["mds_modelo", "mds_similar"])
+    return redirect("vehiculo_detalle", pk=veh.pk)
 
 
 @login_required

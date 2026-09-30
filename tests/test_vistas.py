@@ -153,6 +153,99 @@ def test_auto1_no_se_confunde_con_coche_parecido_de_bca(cliente):
     assert v_auto1.valoracion_anterior is None
 
 
+def test_marcar_vendido_lo_quita_de_la_rejilla_auto1_y_ver_vendidos_lo_muestra(cliente):
+    from tasador.models import EstadoValoracion, Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-09-30"
+    )
+    linea = "Seat Ibiza 1.0 TSI FR Crono\t9161\t49,35\tWH27138\t2017\t51774\tGasolina\tManual"
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": linea})
+    v = Valoracion.objects.get(lote_id="WH27138")
+    vendido = EstadoValoracion.objects.get(nombre="Vendido")
+
+    activos = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "Seat Ibiza" in activos
+    assert "Ver vendidos (0)" in activos
+
+    resp = cliente.post(
+        reverse("celda_update", args=[v.pk]),
+        {"campo": "estado_id", "valor": vendido.pk},
+    )
+    assert resp.status_code == 200
+    v.refresh_from_db()
+    assert v.estado_id == vendido.pk
+
+    activos = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "Seat Ibiza" not in activos
+    assert "Ver vendidos (1)" in activos
+
+    vendidos = cliente.get(reverse("sesion_detalle", args=[s.pk]), {"vendidos": "1"}).content.decode()
+    assert "Seat Ibiza" in vendidos
+    assert "← Ver activos" in vendidos
+
+
+def test_guardar_mds_en_ficha_del_vehiculo(cliente):
+    from tasador.models import Valoracion
+
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    v = Valoracion.objects.get(vehiculo__matricula="9553LDF")
+
+    html = cliente.get(reverse("vehiculo_detalle", args=[v.vehiculo_id])).content.decode()
+    assert "Capacidad de suministro (MDS)" in html
+
+    resp = cliente.post(
+        reverse("vehiculo_actualizar_mds", args=[v.vehiculo_id]),
+        {"mds_modelo": "69", "mds_similar": "55"},
+    )
+    assert resp.status_code == 302
+    v.vehiculo.refresh_from_db()
+    assert v.vehiculo.mds_modelo == 69
+    assert v.vehiculo.mds_similar == 55
+
+    # se puede volver a dejar en blanco
+    cliente.post(
+        reverse("vehiculo_actualizar_mds", args=[v.vehiculo_id]),
+        {"mds_modelo": "", "mds_similar": ""},
+    )
+    v.vehiculo.refresh_from_db()
+    assert v.vehiculo.mds_modelo is None
+    assert v.vehiculo.mds_similar is None
+
+
+def test_sesion_lista_muestra_solo_semana_en_curso_salvo_auto1(cliente):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from tasador.models import Proveedor, SesionSubasta
+
+    bca = Proveedor.objects.get(nombre="BCA")
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    hoy = timezone.localdate()
+
+    s_esta_semana = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.first(), fecha=hoy
+    )
+    s_pasada = SesionSubasta.objects.create(
+        proveedor=bca, ubicacion=bca.ubicaciones.first(), fecha=hoy - timedelta(days=30)
+    )
+    s_auto1 = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha=hoy - timedelta(days=90)
+    )
+
+    html = cliente.get(reverse("sesion_lista")).content.decode()
+    assert str(s_esta_semana.ubicacion) in html or s_esta_semana.ubicacion.nombre in html
+    assert reverse("sesion_detalle", args=[s_esta_semana.pk]) in html
+    assert reverse("sesion_detalle", args=[s_auto1.pk]) in html
+    assert reverse("sesion_detalle", args=[s_pasada.pk]) not in html
+
+    html_todas = cliente.get(reverse("sesion_lista"), {"todas": "1"}).content.decode()
+    assert reverse("sesion_detalle", args=[s_pasada.pk]) in html_todas
+
+
 def test_dos_bca_parecidos_no_se_fusionan_sin_coincidir_matricula(cliente):
     """Bug real (encontrado probando la paginación con una flota sintética):
     dos SEAT Ibiza 2020 de BCA, con matrícula distinta y km parecidos, son

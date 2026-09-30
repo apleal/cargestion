@@ -2,7 +2,13 @@
 {% block title %}Subastas · Tasador{% endblock %}
 {% block content %}
 <div class="sesion-head">
-  <h1>Subastas</h1>
+  <div>
+    <h1>Subastas</h1>
+    <p class="mono ayuda">
+      {% if ver_todas %}Mostrando todas. <a href="{% url 'sesion_lista' %}">Ver solo esta semana</a>
+      {% else %}Solo la semana en curso (Auto1 se ve siempre, es continua). <a href="?todas=1">Ver todas</a>{% endif %}
+    </p>
+  </div>
   <a class="btn primary" href="{% url 'sesion_nueva' %}">Nueva subasta</a>
 </div>
 <div class="card">
@@ -19,7 +25,10 @@
         <td><a href="{% url 'sesion_sala' s.pk %}">Sala</a></td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" class="mono">Aún no hay subastas. <a href="{% url 'sesion_nueva' %}">Crea la primera</a>.</td></tr>
+      <tr><td colspan="6" class="mono">
+        {% if ver_todas %}Aún no hay subastas. <a href="{% url 'sesion_nueva' %}">Crea la primera</a>.
+        {% else %}Ninguna esta semana. <a href="?todas=1">Ver todas</a> o <a href="{% url 'sesion_nueva' %}">crea una</a>.{% endif %}
+      </td></tr>
       {% endfor %}
     </tbody>
   </table></div>
