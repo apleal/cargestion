@@ -13,6 +13,8 @@ la web y las automatizaciones.
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from rest_framework import serializers, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -20,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import Proveedor
+from .models import Proveedor, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -95,7 +97,42 @@ class RegistrarEscaneoAuto1View(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        sesion = services.sesion_auto1_de_hoy(usuario=request.user)
+        nuevo_precio = Decimal(lote.precio_subasta or 0)
+        nuevo_iva = Decimal(lote.iva_anuncio or 0)
+        anterior = (
+            Valoracion.objects.filter(
+                proveedor__nombre="Auto1", lote_id=lote.referencia, vehiculo__matricula=""
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
+        # Pasada diaria sin novedades: no se acumula una tasación idéntica por
+        # coche y día; solo se marca como comprobado (updated_at).
+        if anterior and anterior.precio_salida == nuevo_precio and anterior.iva_anuncio == nuevo_iva:
+            anterior.save(update_fields=["updated_at"])
+            return Response(
+                {
+                    "valoracion_id": anterior.pk,
+                    "vehiculo_id": anterior.vehiculo_id,
+                    "referencia": anterior.lote_id,
+                    "sin_cambios": True,
+                    "es_retasacion": True,
+                    "precio_salida": str(anterior.precio_salida),
+                    "precio_anterior": str(anterior.precio_salida),
+                    "variacion": "0",
+                    "puja_maxima_15": (
+                        str(anterior.r_puja_maxima_principal)
+                        if anterior.r_puja_maxima_principal is not None
+                        else None
+                    ),
+                    "tier": services.tier_precio_salida(anterior),
+                    "en_precio": services.en_precio(anterior),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        sesion = services.sesion_auto1_continua(usuario=request.user)
         v, es_retasacion = services.crear_valoracion_desde_lote(
             lote, sesion, usuario=request.user
         )
@@ -105,8 +142,11 @@ class RegistrarEscaneoAuto1View(APIView):
                 "valoracion_id": v.pk,
                 "vehiculo_id": v.vehiculo_id,
                 "referencia": v.lote_id,
+                "sin_cambios": False,
                 "es_retasacion": es_retasacion,
                 "precio_salida": str(v.precio_salida),
+                "precio_anterior": str(anterior.precio_salida) if anterior else None,
+                "variacion": str(v.precio_salida - anterior.precio_salida) if anterior else None,
                 "precio_venta_estimado": str(v.precio_venta_estimado),
                 "coste_total": str(v.r_coste_total),
                 "beneficio_neto": str(v.r_beneficio_neto),

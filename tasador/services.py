@@ -256,19 +256,26 @@ def delta_precio_salida(
     return txt, signo
 
 
-def sesion_auto1_de_hoy(usuario=None) -> SesionSubasta:
-    """Sesión "cajón" de Auto1 para hoy: se crea sola la primera vez que hace
-    falta (uso típico: la API de re-escaneo automático, que no debería tener
-    que elegir ni crear una sesión cada vez)."""
+def sesion_auto1_continua(usuario=None) -> SesionSubasta:
+    """Sesión única de Auto1 (es un mercado continuo, no hay una por día).
+
+    Reutiliza la más reciente; solo crea una (con la fecha de hoy) si no existe
+    ninguna. Así la rejilla agrupa todos los escaneos de un coche en un sitio y
+    la lista de subastas no se llena de una sesión de Auto1 por cada día."""
     proveedor = Proveedor.objects.get(nombre="Auto1")
-    ubicacion = proveedor.ubicaciones.filter(nombre="Auto1 Online").first()
-    sesion, _ = SesionSubasta.objects.get_or_create(
-        proveedor=proveedor,
-        ubicacion=ubicacion,
-        fecha=timezone.localdate(),
-        defaults={"creada_por": usuario},
+    existente = (
+        SesionSubasta.objects.filter(proveedor=proveedor)
+        .order_by("-fecha", "-created_at")
+        .first()
     )
-    return sesion
+    if existente:
+        return existente
+    return SesionSubasta.objects.create(
+        proveedor=proveedor,
+        ubicacion=proveedor.ubicaciones.filter(nombre="Auto1 Online").first(),
+        fecha=timezone.localdate(),
+        creada_por=usuario,
+    )
 
 
 def coches_auto1_en_seguimiento():

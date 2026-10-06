@@ -47,7 +47,7 @@ def test_crear_token_api_comando(datos, capsys):
 
 def test_seguimiento_solo_lista_no_finales(api):
     auto1 = models.Proveedor.objects.get(nombre="Auto1")
-    sesion = services.sesion_auto1_de_hoy()
+    sesion = services.sesion_auto1_continua()
     finalizado = models.EstadoValoracion.objects.filter(es_final=True).first()
     interesante = models.EstadoValoracion.objects.get(nombre="Interesante")
 
@@ -106,6 +106,40 @@ def test_registrar_escaneo_detecta_retasacion_y_hereda_venta(api):
     assert data["precio_venta_estimado"] == "7500.00"  # heredado, no 0
     assert data["tier"] is not None  # con venta 7500 y salida 3900 ya calcula algo
     assert data["puja_maxima_15"] is not None
+
+
+def test_escaneo_sin_cambios_no_crea_tasacion_nueva(api):
+    linea = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    r1 = api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    assert r1.status_code == 201
+    assert r1.json()["sin_cambios"] is False
+
+    r2 = api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    assert r2.status_code == 200
+    assert r2.json()["sin_cambios"] is True
+    assert r2.json()["valoracion_id"] == r1.json()["valoracion_id"]
+    assert models.Valoracion.objects.filter(lote_id="PT46293").count() == 1
+
+
+def test_escaneo_con_bajada_informa_precio_anterior_y_variacion(api):
+    l1 = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    l2 = "Opel Adam 1.4 Glam ecoFlex\t3900\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    api.post(reverse("api_auto1_escaneo"), {"texto": l1}, format="json")
+    r2 = api.post(reverse("api_auto1_escaneo"), {"texto": l2}, format="json")
+    assert r2.status_code == 201
+    data = r2.json()
+    assert data["precio_anterior"] == "4062.00"
+    assert data["variacion"] == "-162.00"
+    assert models.Valoracion.objects.filter(lote_id="PT46293").count() == 2
+
+
+def test_la_api_usa_una_unica_sesion_de_auto1(api):
+    l1 = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    l2 = "Seat Ibiza 1.0 TSI FR\t9000\t49.35\tWH27138\t2017\t51774\tGasolina\tManual"
+    api.post(reverse("api_auto1_escaneo"), {"texto": l1}, format="json")
+    api.post(reverse("api_auto1_escaneo"), {"texto": l2}, format="json")
+    sesiones = models.SesionSubasta.objects.filter(proveedor__nombre="Auto1")
+    assert sesiones.count() == 1
 
 
 def test_registrar_escaneo_texto_invalido_da_400(api):
