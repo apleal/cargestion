@@ -518,3 +518,29 @@ class Valoracion(models.Model):
     def clean(self) -> None:
         if self.precio_venta_estimado is not None and self.precio_venta_estimado < 0:
             raise ValidationError("El precio de venta no puede ser negativo.")
+
+
+class PasadaAuto1(models.Model):
+    """Parte de cada pasada del servicio de seguimiento automático de Auto1.
+
+    Sirve para saber si el servicio está vivo: si no llegan partes, el Panel
+    avisa. Los crea el propio servicio a través de la API."""
+
+    fecha = models.DateTimeField(default=timezone.now, db_index=True)
+    ok = models.BooleanField(default=True)
+    revisados = models.PositiveIntegerField(default=0)
+    con_cambios = models.PositiveIntegerField(default=0)
+    sin_cambios = models.PositiveIntegerField(default=0)
+    sin_precio = models.PositiveIntegerField(
+        default=0, help_text="Fichas que ya no muestran precio (¿vendidos?)."
+    )
+    errores = models.PositiveIntegerField(default=0)
+    detalle = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "pasada de seguimiento Auto1"
+        verbose_name_plural = "pasadas de seguimiento Auto1"
+        ordering = ["-fecha"]
+
+    def __str__(self) -> str:
+        return f"{self.fecha:%d/%m/%Y %H:%M} · {'OK' if self.ok else 'FALLO'}"

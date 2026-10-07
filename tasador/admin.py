@@ -104,3 +104,9 @@ class ValoracionAdmin(SimpleHistoryAdmin):
         "r_beneficio_neto", "r_rentabilidad_coste", "r_margen_venta",
         "r_puja_maxima_principal", "r_escenarios",
     )
+
+
+@admin.register(models.PasadaAuto1)
+class PasadaAuto1Admin(admin.ModelAdmin):
+    list_display = ("fecha", "ok", "revisados", "con_cambios", "sin_cambios", "sin_precio", "errores")
+    list_filter = ("ok",)

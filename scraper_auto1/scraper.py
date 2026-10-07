@@ -170,6 +170,7 @@ def pasada(cfg: dict) -> None:
         coches = coches[: cfg["max_cars"]]
     log(f"{len(coches)} coches en seguimiento.")
     if not coches:
+        registrar_pasada(cfg, True, 0, 0, 0, 0, 0, "No había coches en seguimiento.")
         return
 
     avisos: list[str] = []
@@ -247,7 +248,36 @@ def pasada(cfg: dict) -> None:
         log(f"  error: {e}")
     if sin_ficha:
         log(f"  sin precio (¿vendidos?): {', '.join(sin_ficha[:20])}")
+    detalle = "\n".join(
+        ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
+        + [f"Error: {e}" for e in errores[:10]]
+    )
+    registrar_pasada(
+        cfg, True, len(coches), cambios, sin_cambios, len(sin_ficha), len(errores), detalle
+    )
     notificar(cfg, resumen, avisos, sin_ficha, errores)
+
+
+def registrar_pasada(
+    cfg, ok, revisados, con_cambios, sin_cambios, sin_precio, errores, detalle
+) -> None:
+    """Deja el parte de la pasada en la app (también si falla): el Panel avisa
+    si los partes dejan de llegar o el último es un fallo."""
+    if cfg["dry_run"]:
+        return
+    try:
+        requests.post(
+            f"{cfg['app_url']}/api/auto1/pasada/",
+            headers=api_headers(cfg),
+            json={
+                "ok": ok, "revisados": revisados, "con_cambios": con_cambios,
+                "sin_cambios": sin_cambios, "sin_precio": sin_precio,
+                "errores": errores, "detalle": detalle[:2000],
+            },
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        log(f"No se pudo registrar el parte en la app: {e}")
 
 
 def notificar(cfg, resumen, avisos, sin_ficha, errores) -> None:
@@ -273,6 +303,7 @@ def main() -> None:
             pasada(cfg)
         except Exception as e:  # una pasada fallida no debe tumbar el servicio
             log(f"Pasada fallida: {e}")
+            registrar_pasada(cfg, False, 0, 0, 0, 0, 1, str(e))
             if cfg["webhook"] and not cfg["dry_run"]:
                 try:
                     requests.post(

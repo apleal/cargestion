@@ -4,6 +4,43 @@
 {% block content %}
 <h1>Panel</h1>
 
+{% if seguimiento_auto1 %}
+{% with s=seguimiento_auto1 %}
+<div class="card {% if s.nivel != 'ok' %}aviso-card{% endif %}">
+  <h2>
+    {% if s.nivel == 'ok' %}✅{% elif s.nivel == 'error' %}❌{% else %}⚠️{% endif %}
+    {{ s.titulo }}
+  </h2>
+  {% if s.ultima %}
+  <p class="mono ayuda">
+    Última pasada: {{ s.ultima.fecha|date:"d/m/Y H:i" }} (hace {{ s.horas }} h) ·
+    {{ s.ultima.revisados }} coches revisados · {{ s.ultima.con_cambios }} con cambios ·
+    {{ s.ultima.sin_cambios }} sin cambios · {{ s.ultima.sin_precio }} sin precio (¿vendidos?) ·
+    {{ s.ultima.errores }} error{{ s.ultima.errores|pluralize:"es" }}
+  </p>
+  {% endif %}
+  {% if s.detalle %}<p class="mono ayuda">{{ s.detalle|truncatechars:400 }}</p>{% endif %}
+  {% if s.pasadas|length > 1 %}
+  <details><summary class="mono ayuda">Últimas pasadas</summary>
+    <div class="tw"><table>
+      <thead><tr><th>Fecha</th><th>Resultado</th><th class="num">Revisados</th><th class="num">Cambios</th><th class="num">Sin precio</th><th class="num">Errores</th></tr></thead>
+      <tbody>
+        {% for p in s.pasadas %}
+        <tr>
+          <td class="num">{{ p.fecha|date:"d/m H:i" }}</td>
+          <td>{% if p.ok %}OK{% else %}<span class="neg">FALLO</span>{% endif %}</td>
+          <td class="num">{{ p.revisados }}</td><td class="num">{{ p.con_cambios }}</td>
+          <td class="num">{{ p.sin_precio }}</td><td class="num">{{ p.errores }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </details>
+  {% endif %}
+</div>
+{% endwith %}
+{% endif %}
+
 <div class="card">
   <div class="sesion-head">
     <h2>Próximas subastas</h2>

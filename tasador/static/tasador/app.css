@@ -213,3 +213,5 @@ table.rejilla.sala td{padding:9px 12px}
   .topbar,.acciones,.messages,.pegar,.paginacion{display:none}
   .card{border:0;box-shadow:none;padding:0}
 }
+
+.aviso-card{border-color:var(--warn);background:var(--warn-soft)}

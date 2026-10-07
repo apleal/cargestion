@@ -85,6 +85,43 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
     }
 
 
+# Pasada diaria + margen: si pasa más tiempo sin ningún parte, algo va mal.
+HORAS_MAX_SIN_PASADA = 36
+
+
+def _estado_seguimiento_auto1() -> dict | None:
+    """Estado del servicio de seguimiento de Auto1 para el Panel, o None si
+    Auto1 no se usa todavía. nivel: ok | aviso | error."""
+    if not models.Valoracion.objects.filter(proveedor__nombre="Auto1").exists():
+        return None
+    pasadas = list(models.PasadaAuto1.objects.all()[:5])
+    if not pasadas:
+        return {
+            "nivel": "aviso",
+            "titulo": "El seguimiento automático de Auto1 todavía no ha dado señales",
+            "detalle": "Aún no ha llegado ninguna pasada. Si ya lo has desplegado, "
+            "revisa los logs del servicio.",
+            "pasadas": [],
+        }
+    ultima = pasadas[0]
+    horas = (timezone.now() - ultima.fecha).total_seconds() / 3600
+    if not ultima.ok:
+        nivel, titulo = "error", "La última pasada de seguimiento de Auto1 ha FALLADO"
+    elif horas > HORAS_MAX_SIN_PASADA:
+        nivel = "error"
+        titulo = f"El seguimiento de Auto1 lleva {int(horas)} h sin dar señales"
+    else:
+        nivel, titulo = "ok", "Seguimiento de Auto1 funcionando"
+    return {
+        "nivel": nivel,
+        "titulo": titulo,
+        "detalle": ultima.detalle,
+        "ultima": ultima,
+        "horas": int(horas),
+        "pasadas": pasadas,
+    }
+
+
 @login_required
 def panel(request):
     hoy = timezone.localdate()
@@ -114,6 +151,7 @@ def panel(request):
         .select_related("vehiculo", "sesion_subasta")
     )
     ctx = {
+        "seguimiento_auto1": _estado_seguimiento_auto1(),
         "proximas": proximas,
         "total_valoraciones": valoraciones.count(),
         "interesantes": valoraciones.filter(estado__nombre="Interesante").count(),

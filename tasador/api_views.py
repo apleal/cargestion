@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import Proveedor, Valoracion
+from .models import PasadaAuto1, Proveedor, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -161,3 +161,27 @@ class RegistrarEscaneoAuto1View(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class PasadaAuto1Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = PasadaAuto1
+        fields = [
+            "ok", "revisados", "con_cambios", "sin_cambios",
+            "sin_precio", "errores", "detalle",
+        ]
+
+
+class RegistrarPasadaAuto1View(APIView):
+    """POST: el servicio de seguimiento deja constancia de cada pasada (también
+    de las fallidas). El Panel usa estos partes para avisar si el servicio
+    falla o simplemente deja de ejecutarse."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        entrada = PasadaAuto1Serializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        pasada = entrada.save()
+        return Response({"id": pasada.pk}, status=status.HTTP_201_CREATED)

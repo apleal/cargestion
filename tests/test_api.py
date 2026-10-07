@@ -145,3 +145,79 @@ def test_la_api_usa_una_unica_sesion_de_auto1(api):
 def test_registrar_escaneo_texto_invalido_da_400(api):
     resp = api.post(reverse("api_auto1_escaneo"), {"texto": ""}, format="json")
     assert resp.status_code == 400
+
+
+def test_registrar_pasada_requiere_token_y_guarda_el_parte(api, datos):
+    sin_token = APIClient().post(reverse("api_auto1_pasada"), {"ok": True}, format="json")
+    assert sin_token.status_code == 401
+
+    resp = api.post(
+        reverse("api_auto1_pasada"),
+        {"ok": True, "revisados": 120, "con_cambios": 5, "sin_cambios": 110,
+         "sin_precio": 4, "errores": 1, "detalle": "Sin precio: AAA111"},
+        format="json",
+    )
+    assert resp.status_code == 201
+    p = models.PasadaAuto1.objects.get()
+    assert p.ok and p.revisados == 120 and p.sin_precio == 4
+
+
+def _panel_html(client):
+    return client.get(reverse("panel")).content.decode()
+
+
+@pytest.fixture
+def web(datos, client):
+    User = get_user_model()
+    User.objects.create_user("web", password="x")
+    client.login(username="web", password="x")
+    return client
+
+
+def _auto1_con_un_coche():
+    auto1 = models.Proveedor.objects.get(nombre="Auto1")
+    models.Valoracion.objects.create(
+        vehiculo=models.Vehiculo.objects.create(marca="Seat", modelo="Ibiza", anio=2020),
+        proveedor=auto1,
+        tipo_subasta=auto1.tipos_subasta.get(nombre="Auto1"),
+        sesion_subasta=services.sesion_auto1_continua(),
+        lote_id="AAA111",
+        precio_venta_estimado=Decimal("10000"),
+        estado=models.EstadoValoracion.objects.get(nombre="Interesante"),
+    )
+
+
+def test_panel_sin_auto1_no_muestra_la_tarjeta_de_seguimiento(web):
+    assert "eguimiento de Auto1" not in _panel_html(web)
+
+
+def test_panel_avisa_si_nunca_ha_llegado_una_pasada(web):
+    _auto1_con_un_coche()
+    html = _panel_html(web)
+    assert "todavía no ha dado señales" in html
+
+
+def test_panel_avisa_si_la_ultima_pasada_fallo(web):
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=False, detalle="Auto1 pide captcha")
+    html = _panel_html(web)
+    assert "ha FALLADO" in html
+    assert "Auto1 pide captcha" in html
+
+
+def test_panel_avisa_si_lleva_mas_de_36h_sin_pasadas(web):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=True, fecha=timezone.now() - timedelta(hours=40))
+    assert "sin dar señales" in _panel_html(web)
+
+
+def test_panel_muestra_ok_si_hay_pasada_reciente(web):
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=True, revisados=10, con_cambios=2)
+    html = _panel_html(web)
+    assert "Seguimiento de Auto1 funcionando" in html
+    assert "10 coches revisados" in html
