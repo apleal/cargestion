@@ -12,9 +12,10 @@
   </div>
   <div class="acciones">
     {% if es_auto1 %}
-      {% if ver_vendidos %}
+      {% if ver_vendidos or ver_oportunidades %}
       <a class="btn" href="?">← Ver activos</a>
       {% else %}
+      <a class="btn {% if n_oportunidades %}primary{% endif %}" href="?oportunidades=1">🎯 Oportunidades ({{ n_oportunidades }})</a>
       <a class="btn" href="?vendidos=1">Ver vendidos ({{ n_vendidos }})</a>
       {% endif %}
     {% endif %}
@@ -104,6 +105,14 @@
           <td class="num mono salida">
             {{ v.precio_salida|eur }}
             {% if f.delta_txt %}<br><span class="delta {{ f.delta_signo }}">{{ f.delta_txt }}</span>{% endif %}
+            <br>
+            {% if v.fallos_ficha %}
+            <span class="comprobado vieja" title="La ficha de Auto1 no mostraba precio en la última pasada">⚠ sin precio</span>
+            {% elif v.ultima_comprobacion %}
+            <span class="comprobado {% if v.comprobacion_vieja %}vieja{% endif %}" title="Última comprobación automática en Auto1">✓ {{ v.ultima_comprobacion|date:"d/m H:i" }}</span>
+            {% else %}
+            <span class="comprobado vieja" title="El seguimiento automático aún no ha comprobado este coche">sin comprobar</span>
+            {% endif %}
           </td>
           {% endif %}
           <td class="num destacado puja-15">{{ f.puja_15|eur }}</td>

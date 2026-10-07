@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -110,7 +111,9 @@ class RegistrarEscaneoAuto1View(APIView):
         # Pasada diaria sin novedades: no se acumula una tasación idéntica por
         # coche y día; solo se marca como comprobado (updated_at).
         if anterior and anterior.precio_salida == nuevo_precio and anterior.iva_anuncio == nuevo_iva:
-            anterior.save(update_fields=["updated_at"])
+            anterior.ultima_comprobacion = timezone.now()
+            anterior.fallos_ficha = 0
+            anterior.save(update_fields=["updated_at", "ultima_comprobacion", "fallos_ficha"])
             return Response(
                 {
                     "valoracion_id": anterior.pk,
@@ -136,6 +139,8 @@ class RegistrarEscaneoAuto1View(APIView):
         v, es_retasacion = services.crear_valoracion_desde_lote(
             lote, sesion, usuario=request.user
         )
+        v.ultima_comprobacion = timezone.now()
+        v.save(update_fields=["ultima_comprobacion"])
 
         return Response(
             {
@@ -185,3 +190,45 @@ class RegistrarPasadaAuto1View(APIView):
         entrada.is_valid(raise_exception=True)
         pasada = entrada.save()
         return Response({"id": pasada.pk}, status=status.HTTP_201_CREATED)
+
+
+class NoDisponibleAuto1InputSerializer(serializers.Serializer):
+    referencia = serializers.CharField(max_length=20)
+
+
+class FichaNoDisponibleAuto1View(APIView):
+    """POST: el servicio avisa de que la ficha de un coche ya no muestra precio.
+
+    La app cuenta las pasadas seguidas; a la segunda lo marca como "Vendido"
+    (sale de la vista activa pero no se borra). Una lectura buena posterior
+    (/api/auto1/escaneo/) pone el contador a cero."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        entrada = NoDisponibleAuto1InputSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        ref = entrada.validated_data["referencia"].strip()
+
+        v = (
+            Valoracion.objects.filter(
+                proveedor__nombre="Auto1", lote_id=ref, vehiculo__matricula=""
+            )
+            .select_related("estado")
+            .order_by("-created_at")
+            .first()
+        )
+        if v is None:
+            return Response({"error": "Referencia desconocida."}, status=status.HTTP_404_NOT_FOUND)
+        if v.estado and v.estado.es_final:
+            return Response({"referencia": ref, "ya_finalizado": True, "marcado_vendido": False})
+
+        vendido = services.marcar_ficha_no_disponible(v)
+        return Response(
+            {
+                "referencia": ref,
+                "fallos_seguidos": v.fallos_ficha,
+                "marcado_vendido": vendido,
+            }
+        )

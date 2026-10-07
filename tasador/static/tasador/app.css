@@ -215,3 +215,5 @@ table.rejilla.sala td{padding:9px 12px}
 }
 
 .aviso-card{border-color:var(--warn);background:var(--warn-soft)}
+.comprobado{font-size:.68rem;color:var(--ink-soft);font-family:"IBM Plex Mono",monospace}
+.comprobado.vieja{color:var(--warn)}

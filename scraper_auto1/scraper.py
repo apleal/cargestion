@@ -16,6 +16,7 @@ Variables de entorno (las credenciales NUNCA van en el repositorio):
     MAX_CARS         límite de coches por pasada; 0 = todos (def. 0)
     DRY_RUN          1 = no envía nada a la app, solo muestra lo leído
     NOTIFY_WEBHOOK   URL opcional a la que se manda el resumen/avisos (JSON)
+    TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  opcionales: avisos por Telegram
     HEADLESS         0 = muestra el navegador (para depurar en tu PC)
 """
 from __future__ import annotations
@@ -83,6 +84,8 @@ def config() -> dict:
         "max_cars": int(os.environ.get("MAX_CARS", "0")),
         "dry_run": os.environ.get("DRY_RUN", "0") == "1",
         "webhook": os.environ.get("NOTIFY_WEBHOOK", ""),
+        "tg_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+        "tg_chat": os.environ.get("TELEGRAM_CHAT_ID", ""),
         "headless": os.environ.get("HEADLESS", "1") != "0",
     }
     faltan = [
@@ -130,8 +133,10 @@ def leer_ficha(page, url: str) -> dict | None:
     retirada o sesión caída)."""
     page.goto(url, wait_until="domcontentloaded")
     try:
-        page.wait_for_selector(".minimumBid .money-value", timeout=15_000)
+        page.wait_for_selector(".minimumBid .money-value", timeout=10_000)
     except PlaywrightTimeout:
+        if "signin" in page.url:
+            raise RuntimeError("Se ha caído la sesión de Auto1 (redirige al login).")
         return None
     return page.evaluate(JS_EXTRAER)
 
@@ -164,6 +169,20 @@ def enviar_escaneo(cfg: dict, linea: str) -> dict:
     return r.json()
 
 
+def marcar_no_disponible(cfg: dict, referencia: str) -> dict:
+    r = requests.post(
+        f"{cfg['app_url']}/api/auto1/no-disponible/",
+        headers=api_headers(cfg),
+        json={"referencia": referencia},
+        timeout=60,
+    )
+    if r.status_code == 404:
+        return {}  # referencia que la app no conoce: se ignora
+    if r.status_code >= 400:
+        raise RuntimeError(f"La app rechazó el aviso ({r.status_code}): {r.text[:200]}")
+    return r.json()
+
+
 def pasada(cfg: dict) -> None:
     coches = coches_en_seguimiento(cfg)
     if cfg["max_cars"]:
@@ -176,8 +195,7 @@ def pasada(cfg: dict) -> None:
     avisos: list[str] = []
     sin_ficha: list[str] = []
     errores: list[str] = []
-    cambios = sin_cambios = 0
-    fallos_seguidos = 0
+    cambios = sin_cambios = con_precio = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=cfg["headless"])
@@ -198,18 +216,12 @@ def pasada(cfg: dict) -> None:
 
             if datos is None:
                 sin_ficha.append(ref)
-                fallos_seguidos += 1
                 log(f"[{i}/{len(coches)}] {ref}: sin precio en la ficha.")
-                if fallos_seguidos >= 5:
-                    raise RuntimeError(
-                        "5 fichas seguidas sin precio: probablemente se ha caído la "
-                        "sesión o Auto1 ha cambiado la página. Pasada abortada."
-                    )
             else:
-                fallos_seguidos = 0
                 if datos.get("referencia") != ref:
                     errores.append(f"{ref}: la ficha dice {datos.get('referencia')}")
                     continue
+                con_precio += 1
                 linea = linea_para_api(datos)
                 if cfg["dry_run"]:
                     log(f"[{i}/{len(coches)}] DRY_RUN {linea!r}")
@@ -239,6 +251,23 @@ def pasada(cfg: dict) -> None:
 
         browser.close()
 
+    if con_precio == 0:
+        raise RuntimeError(
+            "Ninguna ficha mostró precio: Auto1 ha cambiado la página o la sesión "
+            "no es válida. No se ha marcado nada como vendido."
+        )
+
+    # Las fichas sin precio (con la sesión comprobada buena) se comunican a la
+    # app, que las da por vendidas tras dos pasadas seguidas.
+    vendidos_auto: list[str] = []
+    if not cfg["dry_run"]:
+        for ref in sin_ficha:
+            try:
+                if marcar_no_disponible(cfg, ref).get("marcado_vendido"):
+                    vendidos_auto.append(ref)
+            except RuntimeError as e:
+                errores.append(f"{ref}: {e}")
+
     resumen = (
         f"Auto1: {len(coches)} coches revisados · {cambios} con cambios · "
         f"{sin_cambios} sin cambios · {len(sin_ficha)} sin precio · {len(errores)} errores"
@@ -248,6 +277,8 @@ def pasada(cfg: dict) -> None:
         log(f"  error: {e}")
     if sin_ficha:
         log(f"  sin precio (¿vendidos?): {', '.join(sin_ficha[:20])}")
+    if vendidos_auto:
+        log(f"  marcados como vendidos: {', '.join(vendidos_auto)}")
     detalle = "\n".join(
         ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
         + [f"Error: {e}" for e in errores[:10]]
@@ -255,7 +286,7 @@ def pasada(cfg: dict) -> None:
     registrar_pasada(
         cfg, True, len(coches), cambios, sin_cambios, len(sin_ficha), len(errores), detalle
     )
-    notificar(cfg, resumen, avisos, sin_ficha, errores)
+    notificar(cfg, resumen, avisos, vendidos_auto, errores)
 
 
 def registrar_pasada(
@@ -280,20 +311,38 @@ def registrar_pasada(
         log(f"No se pudo registrar el parte en la app: {e}")
 
 
-def notificar(cfg, resumen, avisos, sin_ficha, errores) -> None:
-    if not cfg["webhook"] or cfg["dry_run"]:
+def enviar_aviso(cfg, texto: str, extra: dict | None = None) -> None:
+    """Manda un aviso por los canales configurados (Telegram y/o webhook)."""
+    if cfg["dry_run"]:
         return
-    if not (avisos or errores):
+    if cfg["tg_token"] and cfg["tg_chat"]:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{cfg['tg_token']}/sendMessage",
+                json={"chat_id": cfg["tg_chat"], "text": texto[:4000]},
+                timeout=30,
+            )
+        except requests.RequestException as e:
+            log(f"No se pudo avisar por Telegram: {e}")
+    if cfg["webhook"]:
+        try:
+            requests.post(
+                cfg["webhook"], json={"mensaje": texto, **(extra or {})}, timeout=30
+            )
+        except requests.RequestException as e:
+            log(f"No se pudo avisar al webhook: {e}")
+
+
+def notificar(cfg, resumen, avisos, vendidos_auto, errores) -> None:
+    if not (avisos or vendidos_auto or errores):
         return  # solo molesta si hay algo que decir
-    texto = "\n".join([resumen, *avisos])
-    try:
-        requests.post(
-            cfg["webhook"],
-            json={"mensaje": texto, "avisos": avisos, "sin_ficha": sin_ficha, "errores": errores},
-            timeout=30,
-        )
-    except requests.RequestException as e:
-        log(f"No se pudo avisar al webhook: {e}")
+    partes = [resumen, *avisos]
+    if vendidos_auto:
+        partes.append("🚫 Ya no disponibles en Auto1 (marcados vendidos): " + ", ".join(vendidos_auto))
+    enviar_aviso(
+        cfg, "\n".join(partes),
+        {"avisos": avisos, "vendidos": vendidos_auto, "errores": errores},
+    )
 
 
 def main() -> None:
@@ -304,14 +353,7 @@ def main() -> None:
         except Exception as e:  # una pasada fallida no debe tumbar el servicio
             log(f"Pasada fallida: {e}")
             registrar_pasada(cfg, False, 0, 0, 0, 0, 1, str(e))
-            if cfg["webhook"] and not cfg["dry_run"]:
-                try:
-                    requests.post(
-                        cfg["webhook"], json={"mensaje": f"⚠️ Seguimiento Auto1 falló: {e}"},
-                        timeout=30,
-                    )
-                except requests.RequestException:
-                    pass
+            enviar_aviso(cfg, f"⚠️ Seguimiento Auto1 falló: {e}")
             if cfg["every_hours"] == 0:
                 sys.exit(1)
         if cfg["every_hours"] == 0:

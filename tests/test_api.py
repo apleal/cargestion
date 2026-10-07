@@ -221,3 +221,94 @@ def test_panel_muestra_ok_si_hay_pasada_reciente(web):
     html = _panel_html(web)
     assert "Seguimiento de Auto1 funcionando" in html
     assert "10 coches revisados" in html
+
+
+def test_el_escaneo_anota_la_ultima_comprobacion(api):
+    linea = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    r1 = api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    v = models.Valoracion.objects.get(pk=r1.json()["valoracion_id"])
+    assert v.ultima_comprobacion is not None
+
+    # una pasada sin cambios también cuenta como comprobado
+    models.Valoracion.objects.filter(pk=v.pk).update(ultima_comprobacion=None)
+    api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    v.refresh_from_db()
+    assert v.ultima_comprobacion is not None
+
+
+def test_ficha_sin_precio_se_marca_vendido_a_la_segunda_pasada(api):
+    linea = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    url = reverse("api_auto1_no_disponible")
+
+    r1 = api.post(url, {"referencia": "PT46293"}, format="json")
+    assert r1.json() == {"referencia": "PT46293", "fallos_seguidos": 1, "marcado_vendido": False}
+    assert "PT46293" in [c["referencia"] for c in api.get(reverse("api_auto1_seguimiento")).json()]
+
+    r2 = api.post(url, {"referencia": "PT46293"}, format="json")
+    assert r2.json()["marcado_vendido"] is True
+    v = models.Valoracion.objects.get(lote_id="PT46293")
+    assert v.estado.nombre == "Vendido"
+    # ya no se vigila
+    assert "PT46293" not in [c["referencia"] for c in api.get(reverse("api_auto1_seguimiento")).json()]
+
+
+def test_una_lectura_buena_pone_a_cero_los_fallos_de_ficha(api):
+    linea = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
+    api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    api.post(reverse("api_auto1_no_disponible"), {"referencia": "PT46293"}, format="json")
+    assert models.Valoracion.objects.get(lote_id="PT46293").fallos_ficha == 1
+
+    api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+    assert models.Valoracion.objects.get(lote_id="PT46293").fallos_ficha == 0
+    # la siguiente falta vuelve a contar desde 1, no marca vendido
+    r = api.post(reverse("api_auto1_no_disponible"), {"referencia": "PT46293"}, format="json")
+    assert r.json()["marcado_vendido"] is False
+
+
+def test_no_disponible_con_referencia_desconocida_da_404(api):
+    r = api.post(reverse("api_auto1_no_disponible"), {"referencia": "NOEXISTE"}, format="json")
+    assert r.status_code == 404
+
+
+def _dos_coches_uno_en_precio(api, web):
+    """A (salida 7500, venta 15000 -> 15 %) escaneado ANTES que B (sin objetivo)."""
+    la = "Seat Ibiza 1.0 TSI FR\t7500\t49.35\tAAA111\t2017\t51774\tGasolina\tManual"
+    lb = "Audi A1 1.4 TFSI\t14000\t49.35\tBBB222\t2018\t60000\tGasolina\tManual"
+    ra = api.post(reverse("api_auto1_escaneo"), {"texto": la}, format="json").json()
+    api.post(reverse("api_auto1_escaneo"), {"texto": lb}, format="json")
+    web.post(
+        reverse("celda_update", args=[ra["valoracion_id"]]),
+        {"campo": "precio_venta_estimado", "valor": "15000"},
+    )
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    return sesion
+
+
+def test_las_oportunidades_van_primero_en_la_lista_y_se_pueden_filtrar(api, web):
+    sesion = _dos_coches_uno_en_precio(api, web)
+    url = reverse("sesion_detalle", args=[sesion.pk])
+
+    html = web.get(url).content.decode()
+    assert html.index("Seat") < html.index("Audi")  # aunque B se escaneó después
+    assert "Oportunidades (1)" in html
+
+    solo = web.get(url, {"oportunidades": "1"}).content.decode()
+    assert "Seat" in solo and "Audi" not in solo
+    assert "← Ver activos" in solo
+
+
+def test_el_panel_lista_las_oportunidades_con_su_objetivo(api, web):
+    _dos_coches_uno_en_precio(api, web)
+    html = web.get(reverse("panel")).content.decode()
+    assert "En precio ahora mismo (1)" in html
+    assert "🎯 15%" in html
+    assert "Audi" not in html.split("En precio ahora mismo")[1].split("Próximas subastas")[0]
+
+
+def test_la_lista_marca_los_coches_sin_comprobar(api, web):
+    sesion = _dos_coches_uno_en_precio(api, web)
+    models.Valoracion.objects.filter(lote_id="BBB222").update(ultima_comprobacion=None)
+    html = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
+    assert "sin comprobar" in html
+    assert "✓ " in html

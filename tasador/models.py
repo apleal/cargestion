@@ -503,6 +503,16 @@ class Valoracion(models.Model):
     r_puja_maxima_principal = models.DecimalField(**DEC, null=True, blank=True)
     r_escenarios = models.JSONField(default=dict, blank=True)
 
+    ultima_comprobacion = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Última vez que el seguimiento automático miró este coche en Auto1.",
+    )
+    fallos_ficha = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Pasadas seguidas en las que la ficha de Auto1 no mostraba precio "
+        "(al llegar a 2 se marca como vendido).",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     history = HistoricalRecords()

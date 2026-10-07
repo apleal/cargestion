@@ -303,6 +303,40 @@ def coches_auto1_en_seguimiento():
     return salida
 
 
+TIER_ORDEN = {"15": 0, "12": 1, "10": 2}
+FALLOS_PARA_VENDIDO = 2
+
+
+def oportunidades_auto1() -> list[tuple[Valoracion, str]]:
+    """Coches vivos de Auto1 cuyo precio de salida ya llega a algún objetivo,
+    del mejor (15 %) al más ajustado (10 %). Es lo que hay que mirar primero."""
+    salida = []
+    for v in coches_auto1_en_seguimiento():
+        tier = tier_precio_salida(v)
+        if tier:
+            salida.append((v, tier))
+    salida.sort(key=lambda par: (TIER_ORDEN[par[1]], par[0].precio_salida))
+    return salida
+
+
+def marcar_ficha_no_disponible(v: Valoracion) -> bool:
+    """Anota que la ficha de Auto1 de este coche no mostraba precio. Con
+    FALLOS_PARA_VENDIDO pasadas seguidas se da por vendido (se quita de la
+    vista activa, sin borrarlo). Devuelve True si acaba de marcarse vendido."""
+    v.ultima_comprobacion = timezone.now()
+    v.fallos_ficha += 1
+    campos = ["ultima_comprobacion", "fallos_ficha"]
+    vendido = False
+    if v.fallos_ficha >= FALLOS_PARA_VENDIDO:
+        estado = EstadoValoracion.objects.filter(nombre="Vendido").first()
+        if estado:
+            v.estado = estado
+            campos.append("estado")
+            vendido = True
+    v.save(update_fields=campos)
+    return vendido
+
+
 def crear_valoracion_desde_lote(
     lote: LoteParseado,
     sesion: SesionSubasta,

@@ -141,15 +141,10 @@ def panel(request):
         .order_by("fecha")[:10]
     )
     valoraciones = models.Valoracion.objects.select_related("vehiculo", "estado")
-    en_precio = (
-        valoraciones.exclude(estado__es_final=True)
-        .filter(
-            precio_salida__gt=0,
-            r_puja_maxima_principal__isnull=False,
-            precio_salida__lte=F("r_puja_maxima_principal"),
-        )
-        .select_related("vehiculo", "sesion_subasta")
-    )
+    # Último escaneo de cada coche vivo de Auto1 que ya llega a 15/12/10 %.
+    oportunidades = [
+        {"v": v, "tier": tier} for v, tier in services.oportunidades_auto1()
+    ]
     ctx = {
         "seguimiento_auto1": _estado_seguimiento_auto1(),
         "proximas": proximas,
@@ -158,8 +153,7 @@ def panel(request):
         "pujados": valoraciones.filter(estado__nombre="Pujado").count(),
         "adjudicados": valoraciones.filter(estado__nombre="Adjudicado").count(),
         "ultimas": valoraciones.order_by("-created_at")[:15],
-        "en_precio": en_precio.order_by("-updated_at")[:10],
-        "en_precio_total": en_precio.count(),
+        "oportunidades": oportunidades,
     }
     return render(request, "tasador/panel.html", ctx)
 
@@ -222,11 +216,15 @@ def sesion_detalle(request, pk):
         )
         .order_by("orden_lote", "created_at")
     )
+    limite = timezone.now() - timedelta(hours=HORAS_MAX_SIN_PASADA)
     for v in todos:
         v.fila = _fila_valoracion(v)
+        v.comprobacion_vieja = not v.ultima_comprobacion or v.ultima_comprobacion < limite
 
     ver_vendidos = request.GET.get("vendidos") == "1"
+    ver_oportunidades = request.GET.get("oportunidades") == "1"
     n_vendidos = 0
+    n_oportunidades = 0
     if es_auto1:
         # Auto1 es un mercado continuo: el mismo coche se vuelve a pegar varias
         # veces. Se agrupa por vehículo, se muestra solo el último escaneo como
@@ -251,7 +249,21 @@ def sesion_detalle(request, pk):
         vendidos = [v for v in lotes if v.estado_id and v.estado.es_final]
         activos = [v for v in lotes if not (v.estado_id and v.estado.es_final)]
         n_vendidos = len(vendidos)
-        lotes = vendidos if ver_vendidos else activos
+
+        # Las oportunidades (15 % > 12 % > 10 %) van arriba; dentro de cada
+        # grupo se conserva el orden de escaneo más reciente primero.
+        def rango(v):
+            return services.TIER_ORDEN.get(v.fila["tier"], len(services.TIER_ORDEN))
+
+        activos.sort(key=rango)
+        oportunidades = [v for v in activos if v.fila["tier"]]
+        n_oportunidades = len(oportunidades)
+        if ver_vendidos:
+            lotes = vendidos
+        elif ver_oportunidades:
+            lotes = oportunidades
+        else:
+            lotes = activos
     else:
         for v in todos:
             v.historial = []
@@ -279,6 +291,8 @@ def sesion_detalle(request, pk):
         "es_auto1": es_auto1,
         "ver_vendidos": ver_vendidos,
         "n_vendidos": n_vendidos,
+        "ver_oportunidades": ver_oportunidades,
+        "n_oportunidades": n_oportunidades,
         "estado_vendido": models.EstadoValoracion.objects.filter(nombre="Vendido").first(),
         "pegar_form": PegarLotesForm(),
     }
