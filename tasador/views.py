@@ -89,37 +89,86 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
 HORAS_MAX_SIN_PASADA = 36
 
 
+MINUTOS_MAX_SIN_LATIDO = 10
+
+
+def _estado_servicio_auto1() -> dict:
+    """Conexión y actividad del servicio (por su latido)."""
+    srv = models.ServicioAuto1.objects.filter(pk=1).first()
+    if srv is None:
+        return {"conexion": "nunca", "programada": "", "en_curso_desde": None,
+                "solicitada": None, "minutos": None}
+    if srv.ultimo_latido is None:
+        conexion, minutos = "nunca", None
+    else:
+        minutos = int((timezone.now() - srv.ultimo_latido).total_seconds() // 60)
+        conexion = "sin_conexion" if minutos > MINUTOS_MAX_SIN_LATIDO else "conectado"
+    return {
+        "conexion": conexion,
+        "programada": srv.programada,
+        "en_curso_desde": srv.en_curso_desde,
+        "solicitada": srv.pasada_solicitada,
+        "minutos": minutos,
+    }
+
+
 def _estado_seguimiento_auto1() -> dict | None:
     """Estado del servicio de seguimiento de Auto1 para el Panel, o None si
     Auto1 no se usa todavía. nivel: ok | aviso | error."""
     if not models.Valoracion.objects.filter(proveedor__nombre="Auto1").exists():
         return None
+    servicio = _estado_servicio_auto1()
     pasadas = list(models.PasadaAuto1.objects.all()[:5])
+    resultado = {"servicio": servicio, "pasadas": pasadas}
+
     if not pasadas:
-        return {
-            "nivel": "aviso",
-            "titulo": "El seguimiento automático de Auto1 todavía no ha dado señales",
-            "detalle": "Aún no ha llegado ninguna pasada. Si ya lo has desplegado, "
-            "revisa los logs del servicio.",
-            "pasadas": [],
-        }
-    ultima = pasadas[0]
-    horas = (timezone.now() - ultima.fecha).total_seconds() / 3600
-    if not ultima.ok:
-        nivel, titulo = "error", "La última pasada de seguimiento de Auto1 ha FALLADO"
-    elif horas > HORAS_MAX_SIN_PASADA:
-        nivel = "error"
-        titulo = f"El seguimiento de Auto1 lleva {int(horas)} h sin dar señales"
+        resultado.update(
+            nivel="aviso",
+            titulo="El seguimiento automático de Auto1 todavía no ha dado señales",
+            detalle="Aún no ha llegado ninguna pasada. Si ya lo has desplegado, "
+            "pulsa «Actualizar ahora» para probarlo o revisa los logs del servicio.",
+        )
     else:
-        nivel, titulo = "ok", "Seguimiento de Auto1 funcionando"
-    return {
-        "nivel": nivel,
-        "titulo": titulo,
-        "detalle": ultima.detalle,
-        "ultima": ultima,
-        "horas": int(horas),
-        "pasadas": pasadas,
-    }
+        ultima = pasadas[0]
+        horas = (timezone.now() - ultima.fecha).total_seconds() / 3600
+        if not ultima.ok:
+            nivel, titulo = "error", "La última pasada de seguimiento de Auto1 ha FALLADO"
+        elif horas > HORAS_MAX_SIN_PASADA:
+            nivel = "error"
+            titulo = f"El seguimiento de Auto1 lleva {int(horas)} h sin dar señales"
+        else:
+            nivel, titulo = "ok", "Seguimiento de Auto1 funcionando"
+        resultado.update(
+            nivel=nivel, titulo=titulo, detalle=ultima.detalle,
+            ultima=ultima, horas=int(horas),
+        )
+
+    if servicio["conexion"] == "sin_conexion":
+        resultado.update(
+            nivel="error",
+            titulo=f"El servicio de seguimiento de Auto1 está sin conexión (hace {servicio['minutos']} min)",
+        )
+    # Con una pasada pedida o en curso no tiene sentido ofrecer otra.
+    resultado["puede_solicitar"] = not (servicio["solicitada"] or servicio["en_curso_desde"])
+    return resultado
+
+
+@login_required
+@require_POST
+def seguimiento_auto1_solicitar(request):
+    """Botón del Panel: pide una pasada ahora. La recoge el servicio en menos
+    de un minuto (no se ejecuta aquí: el navegador de Auto1 vive en el servicio)."""
+    srv = models.ServicioAuto1.obtener()
+    if srv.pasada_solicitada or srv.en_curso_desde:
+        messages.info(request, "Ya hay una pasada pedida o en curso.")
+    else:
+        srv.pasada_solicitada = timezone.now()
+        srv.solicitada_por = request.user
+        srv.save(update_fields=["pasada_solicitada", "solicitada_por"])
+        messages.success(
+            request, "Pasada solicitada. El servicio la recoge en menos de un minuto."
+        )
+    return redirect("panel")
 
 
 @login_required

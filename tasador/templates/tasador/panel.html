@@ -7,10 +7,29 @@
 {% if seguimiento_auto1 %}
 {% with s=seguimiento_auto1 %}
 <div class="card {% if s.nivel != 'ok' %}aviso-card{% endif %}">
-  <h2>
-    {% if s.nivel == 'ok' %}✅{% elif s.nivel == 'error' %}❌{% else %}⚠️{% endif %}
-    {{ s.titulo }}
-  </h2>
+  <div class="sesion-head">
+    <h2>
+      {% if s.nivel == 'ok' %}✅{% elif s.nivel == 'error' %}❌{% else %}⚠️{% endif %}
+      {{ s.titulo }}
+    </h2>
+    {% if s.puede_solicitar %}
+    <form method="post" action="{% url 'seguimiento_auto1_solicitar' %}"
+          onsubmit="return confirm('¿Lanzar ahora una pasada de seguimiento? Revisa todos los coches vivos y tarda varios minutos.');">
+      {% csrf_token %}
+      <button type="submit" class="btn primary">↻ Actualizar ahora</button>
+    </form>
+    {% endif %}
+  </div>
+  {% with sv=s.servicio %}
+  <p class="mono ayuda">
+    {% if sv.en_curso_desde %}⏳ Pasada en curso desde las {{ sv.en_curso_desde|date:"H:i" }}.
+    {% elif sv.solicitada %}⏳ Pasada pedida a las {{ sv.solicitada|date:"H:i" }}; el servicio la recoge en menos de un minuto.
+    {% endif %}
+    {% if sv.conexion == 'conectado' %}🟢 Servicio conectado (último aviso hace {{ sv.minutos }} min){% if sv.programada %} · pasada automática cada día a las {{ sv.programada }}{% endif %}
+    {% elif sv.conexion == 'sin_conexion' %}🔴 Servicio sin conexión desde hace {{ sv.minutos }} min: revisa que el servicio esté encendido en EasyPanel.
+    {% else %}⚪ El servicio todavía no se ha conectado a la app.{% endif %}
+  </p>
+  {% endwith %}
   {% if s.ultima %}
   <p class="mono ayuda">
     Última pasada: {{ s.ultima.fecha|date:"d/m/Y H:i" }} (hace {{ s.horas }} h) ·

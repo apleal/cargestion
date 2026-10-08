@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import PasadaAuto1, Proveedor, Valoracion
+from .models import PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -230,5 +230,54 @@ class FichaNoDisponibleAuto1View(APIView):
                 "referencia": ref,
                 "fallos_seguidos": v.fallos_ficha,
                 "marcado_vendido": vendido,
+            }
+        )
+
+
+class LatidoAuto1InputSerializer(serializers.Serializer):
+    programada = serializers.CharField(max_length=5, required=False, allow_blank=True)
+    en_curso = serializers.BooleanField(required=False, default=False)
+    consumir_solicitud = serializers.BooleanField(required=False, default=False)
+
+
+class LatidoAuto1View(APIView):
+    """POST: el servicio avisa de que está vivo (cada ~30 s) y pregunta si hay
+    una pasada pedida desde el Panel.
+
+    Body: {"programada": "08:30", "en_curso": false, "consumir_solicitud": false}
+    Respuesta: {"pasada_solicitada": bool, "ultima_pasada_fecha": "AAAA-MM-DD"|null}
+    ``consumir_solicitud`` lo manda al empezar la pasada que atiende el botón.
+    """
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        entrada = LatidoAuto1InputSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = entrada.validated_data
+
+        servicio = ServicioAuto1.obtener()
+        ahora = timezone.now()
+        servicio.ultimo_latido = ahora
+        if "programada" in datos:
+            servicio.programada = datos["programada"]
+        if datos["en_curso"]:
+            servicio.en_curso_desde = servicio.en_curso_desde or ahora
+        else:
+            servicio.en_curso_desde = None
+        solicitada = servicio.pasada_solicitada is not None
+        if datos["consumir_solicitud"]:
+            servicio.pasada_solicitada = None
+            servicio.solicitada_por = None
+        servicio.save()
+
+        ultima = PasadaAuto1.objects.first()
+        return Response(
+            {
+                "pasada_solicitada": solicitada,
+                "ultima_pasada_fecha": (
+                    timezone.localtime(ultima.fecha).date().isoformat() if ultima else None
+                ),
             }
         )

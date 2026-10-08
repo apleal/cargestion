@@ -554,3 +554,34 @@ class PasadaAuto1(models.Model):
 
     def __str__(self) -> str:
         return f"{self.fecha:%d/%m/%Y %H:%M} · {'OK' if self.ok else 'FALLO'}"
+
+
+class ServicioAuto1(models.Model):
+    """Estado del servicio de seguimiento de Auto1 (una sola fila).
+
+    El servicio avisa cada ~30 s ("latido") y a la vez pregunta si alguien ha
+    pedido una pasada desde el botón del Panel. Así el Panel sabe si el
+    servicio está conectado, si está trabajando y cuándo toca la próxima."""
+
+    ultimo_latido = models.DateTimeField(null=True, blank=True)
+    programada = models.CharField(
+        max_length=5, blank=True, help_text='Hora diaria de la pasada, p. ej. "08:30".'
+    )
+    en_curso_desde = models.DateTimeField(null=True, blank=True)
+    pasada_solicitada = models.DateTimeField(
+        null=True, blank=True, help_text="Pedida desde el Panel; el servicio la recoge."
+    )
+    solicitada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    class Meta:
+        verbose_name = "servicio de seguimiento Auto1"
+        verbose_name_plural = "servicio de seguimiento Auto1"
+
+    def __str__(self) -> str:
+        return "Servicio de seguimiento Auto1"
+
+    @classmethod
+    def obtener(cls) -> "ServicioAuto1":
+        return cls.objects.get_or_create(pk=1)[0]

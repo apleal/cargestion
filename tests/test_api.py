@@ -312,3 +312,99 @@ def test_la_lista_marca_los_coches_sin_comprobar(api, web):
     html = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
     assert "sin comprobar" in html
     assert "✓ " in html
+
+
+def test_latido_registra_conexion_y_devuelve_si_hay_pasada_pedida(api, web):
+    r = api.post(reverse("api_auto1_latido"), {"programada": "08:30"}, format="json")
+    assert r.status_code == 200
+    assert r.json() == {"pasada_solicitada": False, "ultima_pasada_fecha": None}
+    srv = models.ServicioAuto1.obtener()
+    assert srv.ultimo_latido is not None and srv.programada == "08:30"
+
+    _auto1_con_un_coche()
+    web.post(reverse("seguimiento_auto1_solicitar"))
+    assert api.post(reverse("api_auto1_latido"), {}, format="json").json()["pasada_solicitada"] is True
+
+    # al empezar la pasada se consume la petición y queda "en curso"
+    api.post(reverse("api_auto1_latido"), {"en_curso": True, "consumir_solicitud": True}, format="json")
+    srv.refresh_from_db()
+    assert srv.pasada_solicitada is None and srv.en_curso_desde is not None
+    assert api.post(reverse("api_auto1_latido"), {"en_curso": True}, format="json").json()["pasada_solicitada"] is False
+
+    # al terminar deja de estar en curso
+    api.post(reverse("api_auto1_latido"), {"en_curso": False}, format="json")
+    srv.refresh_from_db()
+    assert srv.en_curso_desde is None
+
+
+def test_latido_sin_token_da_401(datos):
+    assert APIClient().post(reverse("api_auto1_latido"), {}, format="json").status_code == 401
+
+
+def test_latido_devuelve_la_fecha_de_la_ultima_pasada(api):
+    from django.utils import timezone
+
+    models.PasadaAuto1.objects.create(ok=True)
+    r = api.post(reverse("api_auto1_latido"), {}, format="json")
+    assert r.json()["ultima_pasada_fecha"] == timezone.localdate().isoformat()
+
+
+def test_solicitar_pasada_exige_login_y_post(datos, client):
+    url = reverse("seguimiento_auto1_solicitar")
+    assert client.post(url).status_code == 302  # al login
+    assert models.ServicioAuto1.obtener().pasada_solicitada is None
+
+
+def test_solicitar_pasada_no_se_duplica(web):
+    url = reverse("seguimiento_auto1_solicitar")
+    assert web.get(url).status_code == 405
+    web.post(url)
+    primera = models.ServicioAuto1.obtener().pasada_solicitada
+    assert primera is not None
+    web.post(url)
+    assert models.ServicioAuto1.obtener().pasada_solicitada == primera
+
+
+def test_panel_muestra_boton_y_estado_del_servicio(web):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=True, revisados=3)
+    html = _panel_html(web)
+    assert "Actualizar ahora" in html
+    assert "todavía no se ha conectado" in html
+
+    srv = models.ServicioAuto1.obtener()
+    srv.ultimo_latido = timezone.now() - timedelta(seconds=20)
+    srv.programada = "08:30"
+    srv.save()
+    html = _panel_html(web)
+    assert "Servicio conectado" in html and "a las 08:30" in html
+
+    srv.ultimo_latido = timezone.now() - timedelta(minutes=30)
+    srv.save()
+    html = _panel_html(web)
+    assert "sin conexión" in html
+    assert "❌" in html
+
+
+def test_panel_con_pasada_pedida_o_en_curso_oculta_el_boton(web):
+    from django.utils import timezone
+
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=True)
+    srv = models.ServicioAuto1.obtener()
+    srv.pasada_solicitada = timezone.now()
+    srv.save()
+    html = _panel_html(web)
+    assert "Actualizar ahora" not in html
+    assert "la recoge en menos de un minuto" in html
+
+    srv.pasada_solicitada = None
+    srv.en_curso_desde = timezone.now()
+    srv.save()
+    html = _panel_html(web)
+    assert "Actualizar ahora" not in html
+    assert "Pasada en curso" in html

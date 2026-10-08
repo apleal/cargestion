@@ -11,7 +11,11 @@ Variables de entorno (las credenciales NUNCA van en el repositorio):
     APP_TOKEN        token de `manage.py crear_token_api`    (obligatoria)
     AUTO1_EMAIL      email de tu cuenta de Auto1             (obligatoria)
     AUTO1_PASSWORD   contraseña de tu cuenta de Auto1        (obligatoria)
-    SCAN_EVERY_HOURS cada cuántas horas repetir; 0 = una sola pasada (def. 24)
+    SCAN_AT          hora diaria de la pasada, HH:MM (def. 08:30)
+    TZ_NAME          zona horaria de esa hora (def. Europe/Madrid)
+    POLL_SECONDS     cada cuántos segundos avisa a la app y mira si hay una
+                     pasada pedida desde su botón (def. 30)
+    RUN_ONCE         1 = una sola pasada inmediata y salir (para probar)
     PAUSE_SECONDS    pausa entre coches, para no ir a ráfagas (def. 4)
     MAX_CARS         límite de coches por pasada; 0 = todos (def. 0)
     DRY_RUN          1 = no envía nada a la app, solo muestra lo leído
@@ -26,11 +30,15 @@ import os
 import random
 import sys
 import time
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import requests
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
+
+from horario import parse_hora, toca_pasada_programada
 
 AUTO1_LOGIN = "https://www.auto1.com/es/merchant/signin"
 
@@ -79,7 +87,10 @@ def config() -> dict:
         "app_token": os.environ.get("APP_TOKEN", ""),
         "email": os.environ.get("AUTO1_EMAIL", ""),
         "password": os.environ.get("AUTO1_PASSWORD", ""),
-        "every_hours": float(os.environ.get("SCAN_EVERY_HOURS", "24")),
+        "scan_at": os.environ.get("SCAN_AT", "08:30"),
+        "tz": os.environ.get("TZ_NAME", "Europe/Madrid"),
+        "poll": float(os.environ.get("POLL_SECONDS", "30")),
+        "run_once": os.environ.get("RUN_ONCE", "0") == "1",
         "pause": float(os.environ.get("PAUSE_SECONDS", "4")),
         "max_cars": int(os.environ.get("MAX_CARS", "0")),
         "dry_run": os.environ.get("DRY_RUN", "0") == "1",
@@ -93,6 +104,11 @@ def config() -> dict:
     ]
     if faltan:
         sys.exit(f"Faltan variables de entorno: {', '.join(faltan)}")
+    try:
+        parse_hora(cfg["scan_at"])
+        ZoneInfo(cfg["tz"])
+    except Exception:
+        sys.exit("SCAN_AT debe ser HH:MM (p. ej. 08:30) y TZ_NAME una zona válida.")
     return cfg
 
 
@@ -183,7 +199,7 @@ def marcar_no_disponible(cfg: dict, referencia: str) -> dict:
     return r.json()
 
 
-def pasada(cfg: dict) -> None:
+def pasada(cfg: dict, on_progress=None) -> None:
     coches = coches_en_seguimiento(cfg)
     if cfg["max_cars"]:
         coches = coches[: cfg["max_cars"]]
@@ -207,6 +223,8 @@ def pasada(cfg: dict) -> None:
         login(page, cfg)
 
         for i, c in enumerate(coches, 1):
+            if on_progress:
+                on_progress()
             ref = c["referencia"]
             try:
                 datos = leer_ficha(page, c["url"])
@@ -345,21 +363,77 @@ def notificar(cfg, resumen, avisos, vendidos_auto, errores) -> None:
     )
 
 
+def latido(cfg, en_curso: bool = False, consumir: bool = False) -> dict | None:
+    """Avisa a la app de que el servicio está vivo y pregunta si hay una pasada
+    pedida desde el Panel. Devuelve su respuesta, o None si la app no contesta."""
+    try:
+        r = requests.post(
+            f"{cfg['app_url']}/api/auto1/latido/",
+            headers=api_headers(cfg),
+            json={
+                "programada": cfg["scan_at"],
+                "en_curso": en_curso,
+                "consumir_solicitud": consumir,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException as e:
+        log(f"No se pudo avisar a la app (latido): {e}")
+        return None
+
+
+def ejecutar_pasada(cfg) -> None:
+    """Una pasada completa, informando a la app de que está en curso y sin que
+    un fallo tumbe el servicio."""
+    latido(cfg, en_curso=True, consumir=True)
+    ultimo = [time.monotonic()]
+
+    def progreso():
+        # Una pasada larga no debe parecer un servicio caído.
+        if time.monotonic() - ultimo[0] >= 30:
+            latido(cfg, en_curso=True)
+            ultimo[0] = time.monotonic()
+
+    try:
+        pasada(cfg, on_progress=progreso)
+    except Exception as e:
+        log(f"Pasada fallida: {e}")
+        registrar_pasada(cfg, False, 0, 0, 0, 0, 1, str(e))
+        enviar_aviso(cfg, f"⚠️ Seguimiento Auto1 falló: {e}")
+        if cfg["run_once"]:
+            sys.exit(1)
+    finally:
+        latido(cfg, en_curso=False)
+
+
 def main() -> None:
     cfg = config()
+    if cfg["run_once"]:
+        ejecutar_pasada(cfg)
+        return
+
+    hora = parse_hora(cfg["scan_at"])
+    tz = ZoneInfo(cfg["tz"])
+    log(f"Servicio activo. Pasada diaria a las {cfg['scan_at']} ({cfg['tz']}) y botón del Panel.")
+    intentada: date | None = None
     while True:
-        try:
-            pasada(cfg)
-        except Exception as e:  # una pasada fallida no debe tumbar el servicio
-            log(f"Pasada fallida: {e}")
-            registrar_pasada(cfg, False, 0, 0, 0, 0, 1, str(e))
-            enviar_aviso(cfg, f"⚠️ Seguimiento Auto1 falló: {e}")
-            if cfg["every_hours"] == 0:
-                sys.exit(1)
-        if cfg["every_hours"] == 0:
-            return
-        log(f"Próxima pasada en {cfg['every_hours']} h.")
-        time.sleep(cfg["every_hours"] * 3600)
+        info = latido(cfg)
+        if info is not None:
+            ahora = datetime.now(tz)
+            ultima = (
+                date.fromisoformat(info["ultima_pasada_fecha"])
+                if info.get("ultima_pasada_fecha")
+                else None
+            )
+            programada = toca_pasada_programada(ahora, hora, ultima, intentada)
+            if programada or info.get("pasada_solicitada"):
+                if programada:
+                    intentada = ahora.date()
+                log("Pasada " + ("programada." if programada else "pedida desde el Panel."))
+                ejecutar_pasada(cfg)
+        time.sleep(cfg["poll"])
 
 
 if __name__ == "__main__":
