@@ -1,0 +1,106 @@
+{% with sv=s.servicio %}
+<div class="card {% if s.nivel == 'error' %}aviso-card{% endif %}">
+  <h2>
+    {% if sv.en_curso_desde %}🟢{% elif s.nivel == 'ok' %}✅{% elif s.nivel == 'error' %}❌{% else %}⚠️{% endif %}
+    {{ s.titulo }}
+  </h2>
+
+  <p class="mono ayuda">
+    {% if sv.conexion == 'conectado' %}🟢 Servicio conectado (último aviso hace {{ sv.minutos }} min)
+    {% elif sv.conexion == 'sin_conexion' %}🔴 Servicio sin conexión desde hace {{ sv.minutos }} min: revisa que esté encendido en EasyPanel.
+    {% else %}⚪ El servicio todavía no se ha conectado a la app (mira «¿No conecta?» más abajo).{% endif %}
+    {% if sv.programada %}· pasada automática cada día a las {{ sv.programada }}{% endif %}
+    {% if sv.pausado %}· <b>⏸ pausada</b>{% endif %}
+  </p>
+
+  {% if sv.problemas %}
+  <p class="mono" style="color:var(--warn)">⚠ {{ sv.problemas }}</p>
+  {% endif %}
+
+  {% if sv.en_curso_desde %}
+  <p class="mono">
+    Pasada en curso desde las {{ sv.en_curso_desde|date:"H:i" }} (lleva {{ sv.en_curso_desde|timesince }}).
+    {% if sv.progreso and sv.progreso.total %}
+    Coche {{ sv.progreso.actual }} de {{ sv.progreso.total }}{% if sv.progreso.ref %} · {{ sv.progreso.ref }}{% endif %}
+    {% endif %}
+    {% if sv.detener %}<b>Parada pedida: termina el coche actual…</b>{% endif %}
+  </p>
+  {% if sv.progreso and sv.progreso.total %}
+  <div class="barra"><span style="width:{{ sv.progreso.porcentaje }}%"></span></div>
+  {% endif %}
+  {% elif sv.solicitada %}
+  <p class="mono">⏳ Pasada pedida a las {{ sv.solicitada|date:"H:i" }}: el servicio la recoge en menos de un minuto.</p>
+  {% endif %}
+
+  <div class="acciones" style="margin-top:12px">
+    {% if s.puede_solicitar %}
+    <form method="post" action="{% url 'seguimiento_auto1_accion' %}"
+          onsubmit="return confirm('¿Lanzar ahora una pasada? Revisa los {{ en_seguimiento }} coches en seguimiento y tarda varios minutos.');">
+      {% csrf_token %}<input type="hidden" name="accion" value="lanzar">
+      <button type="submit" class="btn primary">↻ Lanzar pasada ahora</button>
+    </form>
+    {% endif %}
+    {% if sv.en_curso_desde and not sv.detener or sv.solicitada %}
+    <form method="post" action="{% url 'seguimiento_auto1_accion' %}"
+          onsubmit="return confirm('{% if sv.en_curso_desde %}¿Detener la pasada en curso? Termina el coche actual y para.{% else %}¿Cancelar la pasada pedida?{% endif %}');">
+      {% csrf_token %}<input type="hidden" name="accion" value="detener">
+      <button type="submit" class="btn peligro">■ {% if sv.en_curso_desde %}Detener pasada{% else %}Cancelar petición{% endif %}</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{% url 'seguimiento_auto1_accion' %}">
+      {% csrf_token %}
+      {% if sv.pausado %}
+      <input type="hidden" name="accion" value="reanudar">
+      <button type="submit" class="btn">▶ Reanudar seguimiento automático</button>
+      {% else %}
+      <input type="hidden" name="accion" value="pausar">
+      <button type="submit" class="btn">⏸ Pausar seguimiento automático</button>
+      {% endif %}
+    </form>
+  </div>
+  <p class="mono ayuda">{{ en_seguimiento }} coche{{ en_seguimiento|pluralize }} en seguimiento. Pausar solo evita la pasada diaria automática; «Lanzar pasada ahora» sigue funcionando.</p>
+</div>
+
+{% if s.ultima %}
+<div class="card">
+  <h2>Última pasada</h2>
+  <p class="mono">
+    {{ s.ultima.fecha|date:"d/m/Y H:i" }} (hace {{ s.horas }} h) ·
+    {% if s.ultima.ok %}terminada{% else %}<span class="neg">FALLÓ</span>{% endif %} ·
+    {{ s.ultima.revisados }} coches revisados · {{ s.ultima.con_cambios }} con cambios ·
+    {{ s.ultima.sin_cambios }} sin cambios · {{ s.ultima.sin_precio }} sin precio (¿vendidos?) ·
+    {{ s.ultima.errores }} error{{ s.ultima.errores|pluralize:"es" }}
+  </p>
+  {% if s.ultima.detalle %}<p class="mono ayuda">{{ s.ultima.detalle|truncatechars:600 }}</p>{% endif %}
+</div>
+{% endif %}
+
+{% if s.pasadas %}
+<div class="card">
+  <h2>Historial de pasadas</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Fecha</th><th>Resultado</th><th class="num">Revisados</th><th class="num">Cambios</th><th class="num">Sin cambios</th><th class="num">Sin precio</th><th class="num">Errores</th></tr></thead>
+    <tbody>
+      {% for p in s.pasadas %}
+      <tr>
+        <td class="num">{{ p.fecha|date:"d/m H:i" }}</td>
+        <td>{% if p.ok %}OK{% else %}<span class="neg">FALLO</span>{% endif %}</td>
+        <td class="num">{{ p.revisados }}</td><td class="num">{{ p.con_cambios }}</td>
+        <td class="num">{{ p.sin_cambios }}</td><td class="num">{{ p.sin_precio }}</td><td class="num">{{ p.errores }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Actividad del servicio</h2>
+  <p class="mono ayuda">Lo último que ha hecho, en directo (se actualiza sola cada 5 segundos).</p>
+  {% for e in eventos %}
+  <div class="evento"><span class="mono">{{ e.fecha|date:"d/m H:i:s" }}</span> {{ e.texto }}</div>
+  {% empty %}
+  <p class="mono ayuda">Sin actividad todavía. Cuando el servicio funcione, aquí verás cada paso: login, cada coche revisado, cambios de precio…</p>
+  {% endfor %}
+</div>
+{% endwith %}

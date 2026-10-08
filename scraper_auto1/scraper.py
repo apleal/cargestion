@@ -77,8 +77,14 @@ JS_EXTRAER = r"""
 """
 
 
+_LOG_BUFFER: list[str] = []
+
+
 def log(msg: str) -> None:
     print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
+    # Las últimas líneas viajan a la app en el siguiente latido (pantalla de seguimiento).
+    _LOG_BUFFER.append(msg[:280])
+    del _LOG_BUFFER[:-200]
 
 
 def config() -> dict:
@@ -99,16 +105,22 @@ def config() -> dict:
         "tg_chat": os.environ.get("TELEGRAM_CHAT_ID", ""),
         "headless": os.environ.get("HEADLESS", "1") != "0",
     }
-    faltan = [
-        k for k in ("app_url", "app_token", "email", "password") if not cfg[k]
-    ]
+    if not cfg["app_url"] or not cfg["app_token"]:
+        sys.exit(
+            "Faltan APP_URL y/o APP_TOKEN: sin ellas el servicio no puede ni avisar a la app."
+        )
+    # Lo demás no impide avisar a la app: se queda vivo y le cuenta el problema,
+    # así se ve en su pantalla de seguimiento y no solo en los logs.
+    problemas = []
+    faltan = [n for n, k in (("AUTO1_EMAIL", "email"), ("AUTO1_PASSWORD", "password")) if not cfg[k]]
     if faltan:
-        sys.exit(f"Faltan variables de entorno: {', '.join(faltan)}")
+        problemas.append("Faltan variables de entorno: " + ", ".join(faltan) + ".")
     try:
         parse_hora(cfg["scan_at"])
         ZoneInfo(cfg["tz"])
     except Exception:
-        sys.exit("SCAN_AT debe ser HH:MM (p. ej. 08:30) y TZ_NAME una zona válida.")
+        problemas.append("SCAN_AT debe ser HH:MM (p. ej. 08:30) y TZ_NAME una zona válida.")
+    cfg["problemas"] = " ".join(problemas)
     return cfg
 
 
@@ -211,7 +223,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
     avisos: list[str] = []
     sin_ficha: list[str] = []
     errores: list[str] = []
-    cambios = sin_cambios = con_precio = 0
+    cambios = sin_cambios = con_precio = procesados = 0
+    detenida = False
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=cfg["headless"])
@@ -223,9 +236,12 @@ def pasada(cfg: dict, on_progress=None) -> None:
         login(page, cfg)
 
         for i, c in enumerate(coches, 1):
-            if on_progress:
-                on_progress()
             ref = c["referencia"]
+            if on_progress and on_progress(i, len(coches), ref):
+                detenida = True
+                log(f"Pasada detenida desde la app tras {procesados} coches.")
+                break
+            procesados = i
             try:
                 datos = leer_ficha(page, c["url"])
             except PlaywrightError as e:
@@ -269,7 +285,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
 
         browser.close()
 
-    if con_precio == 0:
+    if con_precio == 0 and not detenida:
         raise RuntimeError(
             "Ninguna ficha mostró precio: Auto1 ha cambiado la página o la sesión "
             "no es válida. No se ha marcado nada como vendido."
@@ -278,7 +294,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
     # Las fichas sin precio (con la sesión comprobada buena) se comunican a la
     # app, que las da por vendidas tras dos pasadas seguidas.
     vendidos_auto: list[str] = []
-    if not cfg["dry_run"]:
+    if not cfg["dry_run"] and not detenida:
         for ref in sin_ficha:
             try:
                 if marcar_no_disponible(cfg, ref).get("marcado_vendido"):
@@ -287,7 +303,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
                 errores.append(f"{ref}: {e}")
 
     resumen = (
-        f"Auto1: {len(coches)} coches revisados · {cambios} con cambios · "
+        f"Auto1: {procesados} de {len(coches)} coches revisados"
+        f"{' (detenida)' if detenida else ''} · {cambios} con cambios · "
         f"{sin_cambios} sin cambios · {len(sin_ficha)} sin precio · {len(errores)} errores"
     )
     log(resumen)
@@ -298,11 +315,12 @@ def pasada(cfg: dict, on_progress=None) -> None:
     if vendidos_auto:
         log(f"  marcados como vendidos: {', '.join(vendidos_auto)}")
     detalle = "\n".join(
-        ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
+        (["Detenida manualmente desde la app."] if detenida else [])
+        + ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
         + [f"Error: {e}" for e in errores[:10]]
     )
     registrar_pasada(
-        cfg, True, len(coches), cambios, sin_cambios, len(sin_ficha), len(errores), detalle
+        cfg, True, procesados, cambios, sin_cambios, len(sin_ficha), len(errores), detalle
     )
     notificar(cfg, resumen, avisos, vendidos_auto, errores)
 
@@ -363,38 +381,52 @@ def notificar(cfg, resumen, avisos, vendidos_auto, errores) -> None:
     )
 
 
-def latido(cfg, en_curso: bool = False, consumir: bool = False) -> dict | None:
-    """Avisa a la app de que el servicio está vivo y pregunta si hay una pasada
-    pedida desde el Panel. Devuelve su respuesta, o None si la app no contesta."""
+def latido(cfg, en_curso: bool = False, consumir: bool = False, progreso=None) -> dict | None:
+    """Avisa a la app de que el servicio está vivo, le cuenta qué hace (progreso,
+    problemas, últimas líneas del log) y recoge sus órdenes (pasada pedida,
+    pausa, detener). Devuelve su respuesta, o None si la app no contesta."""
+    enviadas = len(_LOG_BUFFER)
+    cuerpo = {
+        "programada": cfg["scan_at"],
+        "en_curso": en_curso,
+        "consumir_solicitud": consumir,
+        "problemas": cfg.get("problemas", ""),
+        "log": list(_LOG_BUFFER[:enviadas]),
+    }
+    if progreso:
+        cuerpo["progreso"] = progreso
     try:
         r = requests.post(
             f"{cfg['app_url']}/api/auto1/latido/",
             headers=api_headers(cfg),
-            json={
-                "programada": cfg["scan_at"],
-                "en_curso": en_curso,
-                "consumir_solicitud": consumir,
-            },
+            json=cuerpo,
             timeout=30,
         )
         r.raise_for_status()
-        return r.json()
     except requests.RequestException as e:
-        log(f"No se pudo avisar a la app (latido): {e}")
+        print(time.strftime("%Y-%m-%d %H:%M:%S"), f"No se pudo avisar a la app (latido): {e}", flush=True)
         return None
+    del _LOG_BUFFER[:enviadas]
+    return r.json()
 
 
 def ejecutar_pasada(cfg) -> None:
-    """Una pasada completa, informando a la app de que está en curso y sin que
-    un fallo tumbe el servicio."""
+    """Una pasada completa, informando a la app de que está en curso (con su
+    progreso) y obedeciendo la orden de detener, sin que un fallo tumbe el servicio."""
     latido(cfg, en_curso=True, consumir=True)
-    ultimo = [time.monotonic()]
+    estado = {"ultimo": -1e9, "detener": False}
 
-    def progreso():
-        # Una pasada larga no debe parecer un servicio caído.
-        if time.monotonic() - ultimo[0] >= 30:
-            latido(cfg, en_curso=True)
-            ultimo[0] = time.monotonic()
+    def progreso(i, total, ref):
+        # Cada ~15 s: latido con progreso. Una pasada larga no debe parecer un
+        # servicio caído, y así se recoge la orden de detener.
+        if time.monotonic() - estado["ultimo"] >= 15:
+            r = latido(
+                cfg, en_curso=True, progreso={"actual": i, "total": total, "referencia": ref}
+            )
+            estado["ultimo"] = time.monotonic()
+            if r and r.get("detener"):
+                estado["detener"] = True
+        return estado["detener"]
 
     try:
         pasada(cfg, on_progress=progreso)
@@ -411,28 +443,41 @@ def ejecutar_pasada(cfg) -> None:
 def main() -> None:
     cfg = config()
     if cfg["run_once"]:
+        if cfg["problemas"]:
+            sys.exit(cfg["problemas"])
         ejecutar_pasada(cfg)
         return
 
-    hora = parse_hora(cfg["scan_at"])
-    tz = ZoneInfo(cfg["tz"])
-    log(f"Servicio activo. Pasada diaria a las {cfg['scan_at']} ({cfg['tz']}) y botón del Panel.")
+    try:
+        hora = parse_hora(cfg["scan_at"])
+        tz = ZoneInfo(cfg["tz"])
+    except Exception:  # configuración inválida: ya consta en cfg["problemas"]
+        hora, tz = parse_hora("08:30"), ZoneInfo("Europe/Madrid")
+    log(f"Servicio activo. Pasada diaria a las {cfg['scan_at']} ({cfg['tz']}) y botón de la app.")
+    if cfg["problemas"]:
+        log(f"Configuración incompleta, no hará pasadas: {cfg['problemas']}")
+
     intentada: date | None = None
     while True:
-        info = latido(cfg)
-        if info is not None:
-            ahora = datetime.now(tz)
-            ultima = (
-                date.fromisoformat(info["ultima_pasada_fecha"])
-                if info.get("ultima_pasada_fecha")
-                else None
-            )
-            programada = toca_pasada_programada(ahora, hora, ultima, intentada)
-            if programada or info.get("pasada_solicitada"):
-                if programada:
-                    intentada = ahora.date()
-                log("Pasada " + ("programada." if programada else "pedida desde el Panel."))
-                ejecutar_pasada(cfg)
+        try:
+            info = latido(cfg)
+            if info is not None and not cfg["problemas"]:
+                ahora = datetime.now(tz)
+                ultima = (
+                    date.fromisoformat(info["ultima_pasada_fecha"])
+                    if info.get("ultima_pasada_fecha")
+                    else None
+                )
+                programada = not info.get("pausado") and toca_pasada_programada(
+                    ahora, hora, ultima, intentada
+                )
+                if programada or info.get("pasada_solicitada"):
+                    if programada:
+                        intentada = ahora.date()
+                    log("Pasada " + ("programada." if programada else "pedida desde la app."))
+                    ejecutar_pasada(cfg)
+        except Exception as e:  # nada debe tumbar el servicio
+            log(f"Error inesperado en el bucle principal: {e}")
         time.sleep(cfg["poll"])
 
 

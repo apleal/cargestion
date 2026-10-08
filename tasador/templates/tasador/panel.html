@@ -12,6 +12,7 @@
       {% if s.nivel == 'ok' %}✅{% elif s.nivel == 'error' %}❌{% else %}⚠️{% endif %}
       {{ s.titulo }}
     </h2>
+    <a class="btn" href="{% url 'seguimiento_auto1' %}">Abrir control →</a>
     {% if s.puede_solicitar %}
     <form method="post" action="{% url 'seguimiento_auto1_solicitar' %}"
           onsubmit="return confirm('¿Lanzar ahora una pasada de seguimiento? Revisa todos los coches vivos y tarda varios minutos.');">

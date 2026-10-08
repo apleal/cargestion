@@ -97,7 +97,8 @@ def _estado_servicio_auto1() -> dict:
     srv = models.ServicioAuto1.objects.filter(pk=1).first()
     if srv is None:
         return {"conexion": "nunca", "programada": "", "en_curso_desde": None,
-                "solicitada": None, "minutos": None}
+                "solicitada": None, "minutos": None, "pausado": False,
+                "detener": False, "problemas": "", "progreso": None}
     if srv.ultimo_latido is None:
         conexion, minutos = "nunca", None
     else:
@@ -109,16 +110,31 @@ def _estado_servicio_auto1() -> dict:
         "en_curso_desde": srv.en_curso_desde,
         "solicitada": srv.pasada_solicitada,
         "minutos": minutos,
+        "pausado": srv.pausado,
+        "detener": srv.detener_solicitada,
+        "problemas": srv.problemas,
+        "progreso": (
+            {
+                "actual": srv.progreso_actual,
+                "total": srv.progreso_total,
+                "ref": srv.progreso_ref,
+                "porcentaje": int(100 * srv.progreso_actual / srv.progreso_total)
+                if srv.progreso_total
+                else 0,
+            }
+            if srv.en_curso_desde
+            else None
+        ),
     }
 
 
-def _estado_seguimiento_auto1() -> dict | None:
-    """Estado del servicio de seguimiento de Auto1 para el Panel, o None si
-    Auto1 no se usa todavía. nivel: ok | aviso | error."""
-    if not models.Valoracion.objects.filter(proveedor__nombre="Auto1").exists():
+def _estado_seguimiento_auto1(siempre: bool = False, n_pasadas: int = 5) -> dict | None:
+    """Estado del servicio de seguimiento de Auto1, o None si Auto1 no se usa
+    todavía (salvo ``siempre``, para la pantalla de control). nivel: ok | aviso | error."""
+    if not siempre and not models.Valoracion.objects.filter(proveedor__nombre="Auto1").exists():
         return None
     servicio = _estado_servicio_auto1()
-    pasadas = list(models.PasadaAuto1.objects.all()[:5])
+    pasadas = list(models.PasadaAuto1.objects.all()[:n_pasadas])
     resultado = {"servicio": servicio, "pasadas": pasadas}
 
     if not pasadas:
@@ -148,9 +164,30 @@ def _estado_seguimiento_auto1() -> dict | None:
             nivel="error",
             titulo=f"El servicio de seguimiento de Auto1 está sin conexión (hace {servicio['minutos']} min)",
         )
+    elif servicio["problemas"]:
+        resultado.update(
+            nivel="error",
+            titulo="El servicio de seguimiento comunica un problema de configuración",
+            detalle=servicio["problemas"],
+        )
+    elif servicio["en_curso_desde"]:
+        resultado.update(nivel="ok", titulo="Recogiendo datos de Auto1 ahora mismo")
+    elif servicio["pausado"] and resultado["nivel"] == "ok":
+        resultado.update(nivel="aviso", titulo="Seguimiento automático PAUSADO")
     # Con una pasada pedida o en curso no tiene sentido ofrecer otra.
     resultado["puede_solicitar"] = not (servicio["solicitada"] or servicio["en_curso_desde"])
     return resultado
+
+
+def _pedir_pasada(request) -> None:
+    srv = models.ServicioAuto1.obtener()
+    if srv.pasada_solicitada or srv.en_curso_desde:
+        messages.info(request, "Ya hay una pasada pedida o en curso.")
+        return
+    srv.pasada_solicitada = timezone.now()
+    srv.solicitada_por = request.user
+    srv.save(update_fields=["pasada_solicitada", "solicitada_por"])
+    messages.success(request, "Pasada solicitada. El servicio la recoge en menos de un minuto.")
 
 
 @login_required
@@ -158,17 +195,60 @@ def _estado_seguimiento_auto1() -> dict | None:
 def seguimiento_auto1_solicitar(request):
     """Botón del Panel: pide una pasada ahora. La recoge el servicio en menos
     de un minuto (no se ejecuta aquí: el navegador de Auto1 vive en el servicio)."""
-    srv = models.ServicioAuto1.obtener()
-    if srv.pasada_solicitada or srv.en_curso_desde:
-        messages.info(request, "Ya hay una pasada pedida o en curso.")
-    else:
-        srv.pasada_solicitada = timezone.now()
-        srv.solicitada_por = request.user
-        srv.save(update_fields=["pasada_solicitada", "solicitada_por"])
-        messages.success(
-            request, "Pasada solicitada. El servicio la recoge en menos de un minuto."
-        )
+    _pedir_pasada(request)
     return redirect("panel")
+
+
+@login_required
+@require_POST
+def seguimiento_auto1_accion(request):
+    """Controles de la pantalla de seguimiento: lanzar, detener, pausar, reanudar."""
+    accion = request.POST.get("accion")
+    srv = models.ServicioAuto1.obtener()
+    if accion == "lanzar":
+        _pedir_pasada(request)
+    elif accion == "detener":
+        if srv.en_curso_desde:
+            srv.detener_solicitada = True
+            srv.save(update_fields=["detener_solicitada"])
+            messages.success(
+                request, "Parada pedida. El servicio termina el coche actual y se detiene."
+            )
+        elif srv.pasada_solicitada:
+            srv.pasada_solicitada = None
+            srv.save(update_fields=["pasada_solicitada"])
+            messages.success(request, "Petición de pasada cancelada.")
+        else:
+            messages.info(request, "No hay ninguna pasada en curso ni pedida.")
+    elif accion == "pausar":
+        srv.pausado = True
+        srv.save(update_fields=["pausado"])
+        messages.success(
+            request, "Seguimiento automático pausado: no hará la pasada diaria hasta que lo reanudes."
+        )
+    elif accion == "reanudar":
+        srv.pausado = False
+        srv.save(update_fields=["pausado"])
+        messages.success(request, "Seguimiento automático reanudado.")
+    return redirect("seguimiento_auto1")
+
+
+@login_required
+def seguimiento_auto1(request):
+    """Pantalla de control del seguimiento automático de Auto1: estado en vivo,
+    progreso, actividad reciente y botones. ?parcial=1 devuelve solo la zona
+    que se refresca sola cada pocos segundos."""
+    ctx = {
+        "s": _estado_seguimiento_auto1(siempre=True, n_pasadas=10),
+        "eventos": list(models.EventoAuto1.objects.all()[:40]),
+        "en_seguimiento": len(services.coches_auto1_en_seguimiento()),
+    }
+    plantilla = (
+        "tasador/_seguimiento_estado.html"
+        if request.GET.get("parcial") == "1"
+        else "tasador/seguimiento_auto1.html"
+    )
+    return render(request, plantilla, ctx)
 
 
 @login_required

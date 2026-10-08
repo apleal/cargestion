@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
+from .models import EventoAuto1, PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -234,18 +234,36 @@ class FichaNoDisponibleAuto1View(APIView):
         )
 
 
+class ProgresoSerializer(serializers.Serializer):
+    actual = serializers.IntegerField(min_value=0)
+    total = serializers.IntegerField(min_value=0)
+    referencia = serializers.CharField(max_length=20, required=False, allow_blank=True)
+
+
 class LatidoAuto1InputSerializer(serializers.Serializer):
     programada = serializers.CharField(max_length=5, required=False, allow_blank=True)
     en_curso = serializers.BooleanField(required=False, default=False)
     consumir_solicitud = serializers.BooleanField(required=False, default=False)
+    progreso = ProgresoSerializer(required=False)
+    problemas = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+    log = serializers.ListField(
+        child=serializers.CharField(max_length=300), required=False, max_length=100
+    )
+
+
+MAX_EVENTOS = 300
 
 
 class LatidoAuto1View(APIView):
-    """POST: el servicio avisa de que está vivo (cada ~30 s) y pregunta si hay
-    una pasada pedida desde el Panel.
+    """POST: el servicio avisa de que está vivo (cada ~30 s; cada ~15 s durante
+    una pasada), cuenta qué está haciendo y pregunta qué debe hacer.
 
-    Body: {"programada": "08:30", "en_curso": false, "consumir_solicitud": false}
-    Respuesta: {"pasada_solicitada": bool, "ultima_pasada_fecha": "AAAA-MM-DD"|null}
+    Body (todo opcional): {"programada": "08:30", "en_curso": false,
+    "consumir_solicitud": false, "progreso": {"actual": 3, "total": 100,
+    "referencia": "AB123"}, "problemas": "...", "log": ["línea", ...]}
+
+    Respuesta: {"pasada_solicitada": bool, "ultima_pasada_fecha": "AAAA-MM-DD"|null,
+    "pausado": bool, "detener": bool}
     ``consumir_solicitud`` lo manda al empezar la pasada que atiende el botón.
     """
 
@@ -262,15 +280,43 @@ class LatidoAuto1View(APIView):
         servicio.ultimo_latido = ahora
         if "programada" in datos:
             servicio.programada = datos["programada"]
+        servicio.problemas = datos.get("problemas", "")
+
         if datos["en_curso"]:
-            servicio.en_curso_desde = servicio.en_curso_desde or ahora
+            if servicio.en_curso_desde is None or datos["consumir_solicitud"]:
+                # empieza una pasada: se limpia lo de la anterior
+                servicio.en_curso_desde = servicio.en_curso_desde or ahora
+                servicio.detener_solicitada = False
+                servicio.progreso_actual = servicio.progreso_total = 0
+                servicio.progreso_ref = ""
+            if "progreso" in datos:
+                prog = datos["progreso"]
+                servicio.progreso_actual = prog["actual"]
+                servicio.progreso_total = prog["total"]
+                servicio.progreso_ref = prog.get("referencia", "")
         else:
             servicio.en_curso_desde = None
+            servicio.detener_solicitada = False
+            servicio.progreso_actual = servicio.progreso_total = 0
+            servicio.progreso_ref = ""
+
         solicitada = servicio.pasada_solicitada is not None
         if datos["consumir_solicitud"]:
             servicio.pasada_solicitada = None
             servicio.solicitada_por = None
         servicio.save()
+
+        lineas = [l.strip() for l in datos.get("log", []) if l.strip()]
+        if lineas:
+            EventoAuto1.objects.bulk_create(
+                [EventoAuto1(fecha=ahora, texto=l) for l in lineas]
+            )
+            exceso = EventoAuto1.objects.count() - MAX_EVENTOS
+            if exceso > 0:
+                ids = list(
+                    EventoAuto1.objects.order_by("fecha", "id").values_list("id", flat=True)[:exceso]
+                )
+                EventoAuto1.objects.filter(id__in=ids).delete()
 
         ultima = PasadaAuto1.objects.first()
         return Response(
@@ -279,5 +325,7 @@ class LatidoAuto1View(APIView):
                 "ultima_pasada_fecha": (
                     timezone.localtime(ultima.fecha).date().isoformat() if ultima else None
                 ),
+                "pausado": servicio.pausado,
+                "detener": servicio.detener_solicitada,
             }
         )

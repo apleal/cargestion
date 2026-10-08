@@ -574,6 +574,18 @@ class ServicioAuto1(models.Model):
     solicitada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
+    pausado = models.BooleanField(
+        default=False, help_text="Si está activo, no hace la pasada diaria automática."
+    )
+    detener_solicitada = models.BooleanField(
+        default=False, help_text="Pedido de parar la pasada en curso."
+    )
+    progreso_actual = models.PositiveIntegerField(default=0)
+    progreso_total = models.PositiveIntegerField(default=0)
+    progreso_ref = models.CharField(max_length=20, blank=True)
+    problemas = models.TextField(
+        blank=True, help_text="Problemas de configuración que comunica el servicio."
+    )
 
     class Meta:
         verbose_name = "servicio de seguimiento Auto1"
@@ -585,3 +597,19 @@ class ServicioAuto1(models.Model):
     @classmethod
     def obtener(cls) -> "ServicioAuto1":
         return cls.objects.get_or_create(pk=1)[0]
+
+
+class EventoAuto1(models.Model):
+    """Actividad reciente del servicio de seguimiento (las últimas líneas de su
+    log), para ver desde la app que está trabajando. Se conservan las últimas 300."""
+
+    fecha = models.DateTimeField(default=timezone.now, db_index=True)
+    texto = models.CharField(max_length=300)
+
+    class Meta:
+        verbose_name = "evento del seguimiento Auto1"
+        verbose_name_plural = "eventos del seguimiento Auto1"
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.fecha:%d/%m %H:%M:%S} {self.texto[:60]}"

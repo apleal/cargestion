@@ -647,3 +647,23 @@ def test_celda_update_recalcula_puja(cliente):
     v.refresh_from_db()
     assert v.precio_venta_estimado == 9000
     assert v.r_puja_maxima_principal is not None
+
+
+def test_dos_anuncios_distintos_de_auto1_no_se_fusionan_aunque_se_parezcan(cliente):
+    """Bug real: dos anuncios de Auto1 con referencia distinta, mismo modelo y
+    año y km parecidos (±2.000) son coches DISTINTOS. La referencia manda; solo
+    se vigilaba uno de los dos porque se fusionaban en un único vehículo."""
+    from tasador.models import Proveedor, SesionSubasta, Valoracion
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-10-08"
+    )
+    l1 = "Dacia Logan 1.0 Essence\t4000\t0\tDN19581\t2019\t45000\tGasolina\tManual"
+    l2 = "Dacia Logan 1.0 Essence\t4100\t0\tDN19999\t2019\t46500\tGasolina\tManual"
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": l1 + "\n" + l2})
+
+    v1 = Valoracion.objects.get(lote_id="DN19581")
+    v2 = Valoracion.objects.get(lote_id="DN19999")
+    assert v1.vehiculo_id != v2.vehiculo_id
+    assert v2.valoracion_anterior is None

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Seguimiento Auto1 · Tasador{% endblock %}
+{% block content %}
+<div class="sesion-head">
+  <div>
+    <h1>Seguimiento automático de Auto1</h1>
+    <p class="mono ayuda">Aquí controlas el servicio que revisa los precios de tus coches en Auto1: ves si está trabajando, lo lanzas, lo detienes o lo pausas.</p>
+  </div>
+  <a class="btn" href="{% url 'panel' %}">← Panel</a>
+</div>
+
+<div id="estado-vivo">
+  {% include "tasador/_seguimiento_estado.html" %}
+</div>
+
+<details class="card" {% if s.servicio.conexion == 'nunca' or s.servicio.conexion == 'sin_conexion' or s.servicio.problemas %}open{% endif %}>
+  <summary><b>¿No conecta o no funciona? Qué revisar</b></summary>
+  <p class="mono ayuda">El servicio es un segundo programa que corre en EasyPanel (no es esta web). Si desde aquí ves «sin conexión» o «todavía no se ha conectado»:</p>
+  <ol class="ayuda-lista">
+    <li><b>¿Existe el servicio y está encendido?</b> En EasyPanel, en el proyecto <code>autogestion</code>, debe haber un segundo servicio (carpeta de construcción <code>scraper_auto1</code>). Mira su pestaña <b>Logs</b>.</li>
+    <li><b>Variables de entorno</b> del servicio:
+      <ul>
+        <li><code>APP_URL</code> = la dirección de esta web, sin nada detrás.</li>
+        <li><code>APP_TOKEN</code> = solo el token de la API, <b>sin</b> la palabra «Token».</li>
+        <li><code>AUTO1_EMAIL</code> y <code>AUTO1_PASSWORD</code> = tu cuenta de Auto1.</li>
+        <li>Opcionales: <code>SCAN_AT</code> (hora, por defecto 08:30), <code>DRY_RUN=1</code> (probar sin guardar), <code>TELEGRAM_BOT_TOKEN</code> y <code>TELEGRAM_CHAT_ID</code> (avisos).</li>
+      </ul>
+    </li>
+    <li><b>Si el servicio arranca pero le falta alguna variable</b>, ahora lo dice aquí arriba (aviso en rojo), no solo en sus logs.</li>
+    <li>Una petición de pasada no se pierde: queda guardada y el servicio la ejecuta en cuanto se conecte.</li>
+  </ol>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var zona = document.getElementById('estado-vivo');
+  var url = "{% url 'seguimiento_auto1' %}?parcial=1";
+  var pausadoPorUsuario = false;
+
+  // No refrescar mientras se está mostrando un diálogo de confirmación o se pulsa un botón.
+  zona.addEventListener('submit', function(e){ if(!e.defaultPrevented) pausadoPorUsuario = true; });
+
+  function refrescar(){
+    if(pausadoPorUsuario || document.hidden) return;
+    fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+      .then(function(r){ return r.ok ? r.text() : null; })
+      .then(function(html){ if(html !== null) zona.innerHTML = html; })
+      .catch(function(){});
+  }
+  setInterval(refrescar, 5000);
+})();
+</script>
+{% endblock %}

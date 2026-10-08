@@ -317,7 +317,10 @@ def test_la_lista_marca_los_coches_sin_comprobar(api, web):
 def test_latido_registra_conexion_y_devuelve_si_hay_pasada_pedida(api, web):
     r = api.post(reverse("api_auto1_latido"), {"programada": "08:30"}, format="json")
     assert r.status_code == 200
-    assert r.json() == {"pasada_solicitada": False, "ultima_pasada_fecha": None}
+    assert r.json() == {
+        "pasada_solicitada": False, "ultima_pasada_fecha": None,
+        "pausado": False, "detener": False,
+    }
     srv = models.ServicioAuto1.obtener()
     assert srv.ultimo_latido is not None and srv.programada == "08:30"
 
@@ -408,3 +411,148 @@ def test_panel_con_pasada_pedida_o_en_curso_oculta_el_boton(web):
     html = _panel_html(web)
     assert "Actualizar ahora" not in html
     assert "Pasada en curso" in html
+
+
+# ---------------------------------------------------------------- pantalla de control
+def test_latido_guarda_progreso_problemas_y_actividad(api):
+    r = api.post(
+        reverse("api_auto1_latido"),
+        {
+            "en_curso": True,
+            "consumir_solicitud": True,
+            "progreso": {"actual": 3, "total": 10, "referencia": "AB123"},
+            "problemas": "",
+            "log": ["Login en Auto1 correcto.", "[3/10] AB123: sin cambios"],
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    assert r.json()["pausado"] is False and r.json()["detener"] is False
+    srv = models.ServicioAuto1.obtener()
+    assert (srv.progreso_actual, srv.progreso_total, srv.progreso_ref) == (3, 10, "AB123")
+    assert models.EventoAuto1.objects.count() == 2
+
+    # al terminar se limpia el progreso
+    api.post(reverse("api_auto1_latido"), {"en_curso": False}, format="json")
+    srv.refresh_from_db()
+    assert srv.en_curso_desde is None and srv.progreso_total == 0
+
+
+def test_latido_comunica_los_problemas_de_configuracion(api):
+    api.post(
+        reverse("api_auto1_latido"),
+        {"problemas": "Faltan variables de entorno: AUTO1_EMAIL."},
+        format="json",
+    )
+    assert "AUTO1_EMAIL" in models.ServicioAuto1.obtener().problemas
+    api.post(reverse("api_auto1_latido"), {"problemas": ""}, format="json")
+    assert models.ServicioAuto1.obtener().problemas == ""
+
+
+def test_la_actividad_solo_conserva_las_ultimas_300_lineas(api):
+    for bloque in range(4):
+        api.post(
+            reverse("api_auto1_latido"),
+            {"log": [f"linea {bloque}-{n}" for n in range(100)]},
+            format="json",
+        )
+    assert models.EventoAuto1.objects.count() == 300
+    assert not models.EventoAuto1.objects.filter(texto="linea 0-0").exists()
+    assert models.EventoAuto1.objects.filter(texto="linea 3-99").exists()
+
+
+def test_pantalla_de_seguimiento_nunca_conectado_muestra_el_diagnostico(web):
+    html = web.get(reverse("seguimiento_auto1")).content.decode()
+    assert "Seguimiento automático de Auto1" in html
+    assert "todavía no se ha conectado" in html
+    assert "APP_TOKEN" in html and "AUTO1_EMAIL" in html
+    assert "↻ Lanzar pasada ahora" in html
+
+
+def test_pantalla_de_seguimiento_muestra_progreso_en_vivo(web):
+    from django.utils import timezone
+
+    srv = models.ServicioAuto1.obtener()
+    srv.ultimo_latido = timezone.now()
+    srv.programada = "08:30"
+    srv.en_curso_desde = timezone.now()
+    srv.progreso_actual, srv.progreso_total, srv.progreso_ref = 37, 112, "AB12345"
+    srv.save()
+    models.EventoAuto1.objects.create(texto="[37/112] AB12345: 4062 -> 3900")
+
+    html = web.get(reverse("seguimiento_auto1")).content.decode()
+    assert "Recogiendo datos de Auto1 ahora mismo" in html
+    assert "Coche 37 de 112" in html and "AB12345" in html
+    assert "width:33%" in html
+    assert "Detener pasada" in html
+    assert "↻ Lanzar pasada ahora" not in html  # el botón se oculta mientras trabaja
+    assert "[37/112] AB12345: 4062 -&gt; 3900" in html  # actividad en directo (escapada)
+
+
+def test_pantalla_muestra_los_problemas_que_comunica_el_servicio(web):
+    from django.utils import timezone
+
+    srv = models.ServicioAuto1.obtener()
+    srv.ultimo_latido = timezone.now()
+    srv.problemas = "Faltan variables de entorno: AUTO1_EMAIL, AUTO1_PASSWORD."
+    srv.save()
+    html = web.get(reverse("seguimiento_auto1")).content.decode()
+    assert "problema de configuración" in html
+    assert "AUTO1_PASSWORD" in html
+
+
+def test_la_zona_parcial_no_es_una_pagina_completa(web):
+    html = web.get(reverse("seguimiento_auto1"), {"parcial": "1"}).content.decode()
+    assert "<!doctype" not in html.lower()
+    assert "Actividad del servicio" in html
+
+
+def test_acciones_lanzar_detener_y_cancelar(web):
+    from django.utils import timezone
+
+    url = reverse("seguimiento_auto1_accion")
+    assert web.get(url).status_code == 405
+
+    web.post(url, {"accion": "lanzar"})
+    assert models.ServicioAuto1.obtener().pasada_solicitada is not None
+    web.post(url, {"accion": "detener"})  # sin pasada en curso: cancela la petición
+    assert models.ServicioAuto1.obtener().pasada_solicitada is None
+
+    srv = models.ServicioAuto1.obtener()
+    srv.en_curso_desde = timezone.now()
+    srv.save()
+    web.post(url, {"accion": "detener"})
+    assert models.ServicioAuto1.obtener().detener_solicitada is True
+
+
+def test_detener_llega_al_servicio_y_se_limpia_al_acabar(api, web):
+    api.post(reverse("api_auto1_latido"), {"en_curso": True, "consumir_solicitud": True}, format="json")
+    web.post(reverse("seguimiento_auto1_accion"), {"accion": "detener"})
+    r = api.post(reverse("api_auto1_latido"), {"en_curso": True}, format="json")
+    assert r.json()["detener"] is True
+    api.post(reverse("api_auto1_latido"), {"en_curso": False}, format="json")
+    assert models.ServicioAuto1.obtener().detener_solicitada is False
+
+
+def test_pausar_y_reanudar_llegan_al_servicio(api, web):
+    url = reverse("seguimiento_auto1_accion")
+    web.post(url, {"accion": "pausar"})
+    assert api.post(reverse("api_auto1_latido"), {}, format="json").json()["pausado"] is True
+    web.post(url, {"accion": "reanudar"})
+    assert api.post(reverse("api_auto1_latido"), {}, format="json").json()["pausado"] is False
+
+
+def test_el_panel_avisa_de_que_el_seguimiento_esta_pausado(web):
+    from django.utils import timezone
+
+    _auto1_con_un_coche()
+    models.PasadaAuto1.objects.create(ok=True)
+    srv = models.ServicioAuto1.obtener()
+    srv.pausado = True
+    srv.ultimo_latido = timezone.now()
+    srv.save()
+    assert "PAUSADO" in _panel_html(web)
+
+
+def test_el_menu_tiene_enlace_a_seguimiento(web):
+    assert reverse("seguimiento_auto1") in _panel_html(web)
