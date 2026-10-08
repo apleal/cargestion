@@ -20,9 +20,11 @@
     <li><b>¿Existe el servicio y está encendido?</b> En EasyPanel, en el proyecto <code>autogestion</code>, debe haber un segundo servicio (carpeta de construcción <code>scraper_auto1</code>). Mira su pestaña <b>Logs</b>.</li>
     <li><b>Variables de entorno</b> del servicio:
       <ul>
-        <li><code>APP_URL</code> = la dirección de esta web, sin nada detrás.</li>
-        <li><code>APP_TOKEN</code> = solo el token de la API, <b>sin</b> la palabra «Token».</li>
-        <li><code>AUTO1_EMAIL</code> y <code>AUTO1_PASSWORD</code> = tu cuenta de Auto1.</li>
+        <li><b>Para hablar con esta app:</b></li>
+        <li style="list-style:none"><code>APP_URL</code> = la dirección de esta web, sin nada detrás.</li>
+        <li style="list-style:none"><code>APP_TOKEN</code> = el token de <b>esta app</b> (el que da <code>crear_token_api</code>), <b>no</b> de Auto1 y <b>sin</b> la palabra «Token».</li>
+        <li><b>Para entrar en Auto1</b> (solo usuario y contraseña, Auto1 no usa token):</li>
+        <li style="list-style:none"><code>AUTO1_EMAIL</code> y <code>AUTO1_PASSWORD</code> = tu cuenta de Auto1.</li>
         <li>Opcionales: <code>SCAN_AT</code> (hora, por defecto 08:30), <code>DRY_RUN=1</code> (probar sin guardar), <code>TELEGRAM_BOT_TOKEN</code> y <code>TELEGRAM_CHAT_ID</code> (avisos).</li>
       </ul>
     </li>
