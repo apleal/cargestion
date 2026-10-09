@@ -43,7 +43,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from ajustes import limpiar_token, limpiar_url
+from ajustes import caracteres_raros, limpiar_texto, limpiar_token, limpiar_url
 from horario import parse_hora, toca_pasada_programada
 
 AUTO1_HOME = "https://www.auto1.com"
@@ -97,7 +97,7 @@ def config() -> dict:
     cfg = {
         "app_url": limpiar_url(os.environ.get("APP_URL", "")),
         "app_token": limpiar_token(os.environ.get("APP_TOKEN", "")),
-        "email": os.environ.get("AUTO1_EMAIL", ""),
+        "email": limpiar_texto(os.environ.get("AUTO1_EMAIL", "")),
         "password": os.environ.get("AUTO1_PASSWORD", ""),
         "scan_at": os.environ.get("SCAN_AT", "08:30"),
         "tz": os.environ.get("TZ_NAME", "Europe/Madrid"),
@@ -107,8 +107,8 @@ def config() -> dict:
         "max_cars": int(os.environ.get("MAX_CARS", "0")),
         "dry_run": os.environ.get("DRY_RUN", "0") == "1",
         "webhook": os.environ.get("NOTIFY_WEBHOOK", ""),
-        "tg_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
-        "tg_chat": os.environ.get("TELEGRAM_CHAT_ID", ""),
+        "tg_token": limpiar_texto(os.environ.get("TELEGRAM_BOT_TOKEN", "")),
+        "tg_chat": limpiar_texto(os.environ.get("TELEGRAM_CHAT_ID", "")),
         "headless": os.environ.get("HEADLESS", "1") != "0",
     }
     if not cfg["app_url"] or not cfg["app_token"]:
@@ -486,9 +486,14 @@ def latido(cfg, en_curso: bool = False, consumir: bool = False, progreso=None) -
         if resp is not None and resp.status_code == 401:
             texto = (
                 "La app rechaza el token (401). APP_TOKEN tiene "
-                f"{len(cfg['app_token'])} caracteres y uno válido tiene 40. Consulta el "
-                "vigente con «python manage.py crear_token_api --usuario n8n» en la "
-                "consola de la web y pégalo tal cual, sin comillas ni la palabra «Token»."
+                f"{len(cfg['app_token'])} caracteres y uno válido tiene 40"
+                + (
+                    f"; contiene caracteres que no son de un token: {caracteres_raros(cfg['app_token'])}"
+                    if caracteres_raros(cfg["app_token"])
+                    else ""
+                )
+                + ". Consulta el vigente con «python manage.py crear_token_api --usuario n8n» "
+                "en la consola de la web y pégalo tal cual, sin comillas, paréntesis ni la palabra «Token»."
             )
         elif resp is not None and resp.status_code in (400, 403, 404):
             texto = f"La app responde {resp.status_code} en {cfg['app_url']}: ¿APP_URL es la dirección correcta?"

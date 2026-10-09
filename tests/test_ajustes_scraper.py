@@ -42,3 +42,28 @@ def test_limpiar_token_vacio():
 )
 def test_limpiar_url_quita_comillas_espacios_y_barra_final(pegado):
     assert limpiar_url(pegado) == "https://autogestion-appautogestion.xnpd6m.easypanel.host"
+
+
+@pytest.mark.parametrize(
+    "pegado",
+    [f"({TOKEN})", f"[{TOKEN}]", f"<{TOKEN}>", f"{{{TOKEN}}}", f'("Token {TOKEN}")', f" ( {TOKEN} ) "],
+)
+def test_limpiar_token_quita_parentesis_y_otros_envoltorios(pegado):
+    # el ejemplo «(tu token)» dejaba 42 caracteres y la app lo rechazaba
+    assert len(f"({TOKEN})") == 42
+    assert limpiar_token(pegado) == TOKEN
+
+
+def test_limpiar_texto_para_email_y_telegram():
+    from ajustes import limpiar_texto
+
+    assert limpiar_texto("(administracion@garageclub.es)") == "administracion@garageclub.es"
+    assert limpiar_texto(' "1413275357" ') == "1413275357"
+    assert limpiar_texto("") == ""
+
+
+def test_caracteres_raros_explica_un_token_mal_pegado_sin_enseñarlo():
+    from ajustes import caracteres_raros
+
+    assert caracteres_raros(TOKEN) == ""
+    assert caracteres_raros(f"({TOKEN})") == "'(' ')'"
