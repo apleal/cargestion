@@ -43,6 +43,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from ajustes import limpiar_token, limpiar_url
 from horario import parse_hora, toca_pasada_programada
 
 AUTO1_HOME = "https://www.auto1.com"
@@ -94,8 +95,8 @@ def log(msg: str) -> None:
 
 def config() -> dict:
     cfg = {
-        "app_url": os.environ.get("APP_URL", "").rstrip("/"),
-        "app_token": os.environ.get("APP_TOKEN", ""),
+        "app_url": limpiar_url(os.environ.get("APP_URL", "")),
+        "app_token": limpiar_token(os.environ.get("APP_TOKEN", "")),
         "email": os.environ.get("AUTO1_EMAIL", ""),
         "password": os.environ.get("AUTO1_PASSWORD", ""),
         "scan_at": os.environ.get("SCAN_AT", "08:30"),
@@ -481,7 +482,19 @@ def latido(cfg, en_curso: bool = False, consumir: bool = False, progreso=None) -
         )
         r.raise_for_status()
     except requests.RequestException as e:
-        print(time.strftime("%Y-%m-%d %H:%M:%S"), f"No se pudo avisar a la app (latido): {e}", flush=True)
+        resp = getattr(e, "response", None)
+        if resp is not None and resp.status_code == 401:
+            texto = (
+                "La app rechaza el token (401). APP_TOKEN tiene "
+                f"{len(cfg['app_token'])} caracteres y uno válido tiene 40. Consulta el "
+                "vigente con «python manage.py crear_token_api --usuario n8n» en la "
+                "consola de la web y pégalo tal cual, sin comillas ni la palabra «Token»."
+            )
+        elif resp is not None and resp.status_code in (400, 403, 404):
+            texto = f"La app responde {resp.status_code} en {cfg['app_url']}: ¿APP_URL es la dirección correcta?"
+        else:
+            texto = f"No se pudo avisar a la app (latido): {e}"
+        print(time.strftime("%Y-%m-%d %H:%M:%S"), texto, flush=True)
         return None
     del _LOG_BUFFER[:enviadas]
     return r.json()
