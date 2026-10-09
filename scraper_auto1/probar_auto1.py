@@ -57,7 +57,14 @@ def main() -> int:
     print("\nEmpiezo la prueba (se abrirá un navegador).\n")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not visible, slow_mo=250 if visible else 0)
+        try:
+            browser = p.chromium.launch(headless=not visible, slow_mo=250 if visible else 0)
+        except Exception as e:
+            if "Executable doesn't exist" in str(e):
+                print("FALLO: falta el navegador de Playwright. Instálalo con este comando y repite:")
+                print("   ..\\.venv\\Scripts\\python.exe -m playwright install chromium")
+                return 1
+            raise
         page = browser.new_context(locale="es-ES", viewport={"width": 1366, "height": 900}).new_page()
 
         print("Paso 1: abrir la página de acceso de Auto1")
