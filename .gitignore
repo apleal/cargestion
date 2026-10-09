@@ -26,3 +26,6 @@ Thumbs.db
 /backups/
 *.dump
 *.sql.gz
+
+# capturas de la prueba local de Auto1 (pueden contener datos de tu cuenta)
+scraper_auto1/probar_auto1_*.png
