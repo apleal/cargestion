@@ -11,10 +11,18 @@ from __future__ import annotations
 
 import getpass
 import os
+import subprocess
 import sys
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
-from playwright.sync_api import sync_playwright
+# El navegador se guarda junto al script (no en la carpeta de usuario), así la
+# prueba no depende de cómo esté instalado Playwright en el sistema.
+os.environ.setdefault(
+    "PLAYWRIGHT_BROWSERS_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browsers"),
+)
+
+from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scraper import AUTO1_LOGIN, JS_EXTRAER, linea_para_api  # noqa: E402
@@ -57,14 +65,20 @@ def main() -> int:
     print("\nEmpiezo la prueba (se abrirá un navegador).\n")
 
     with sync_playwright() as p:
+        def abrir():
+            return p.chromium.launch(headless=not visible, slow_mo=250 if visible else 0)
+
         try:
-            browser = p.chromium.launch(headless=not visible, slow_mo=250 if visible else 0)
+            browser = abrir()
         except Exception as e:
-            if "Executable doesn't exist" in str(e):
-                print("FALLO: falta el navegador de Playwright. Instálalo con este comando y repite:")
-                print("   ..\\.venv\\Scripts\\python.exe -m playwright install chromium")
+            if "Executable doesn't exist" not in str(e):
+                raise
+            print("Falta el navegador de la prueba: lo instalo ahora (1-2 minutos, solo esta vez)...")
+            r = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"])
+            if r.returncode != 0:
+                print("FALLO: no se pudo instalar el navegador. Copia aquí el error de arriba.")
                 return 1
-            raise
+            browser = abrir()
         page = browser.new_context(locale="es-ES", viewport={"width": 1366, "height": 900}).new_page()
 
         print("Paso 1: abrir la página de acceso de Auto1")
