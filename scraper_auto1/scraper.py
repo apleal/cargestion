@@ -22,6 +22,7 @@ Variables de entorno (las credenciales NUNCA van en el repositorio):
     NOTIFY_WEBHOOK   URL opcional a la que se manda el resumen/avisos (JSON)
     TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  opcionales: avisos por Telegram
     HEADLESS         0 = muestra el navegador (para depurar en tu PC)
+    CHROME_BIN       ruta de Chrome si no está en el sitio habitual (opcional)
 """
 from __future__ import annotations
 
@@ -34,13 +35,17 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import requests
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
-from playwright.sync_api import sync_playwright
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from horario import parse_hora, toca_pasada_programada
 
-AUTO1_LOGIN = "https://www.auto1.com/es/merchant/signin"
+AUTO1_HOME = "https://www.auto1.com"
 
 # Misma lógica que el plugin de Chrome. Devuelve los 8 campos de la línea.
 JS_EXTRAER = r"""
@@ -136,37 +141,113 @@ def coches_en_seguimiento(cfg: dict) -> list[dict]:
     return r.json()
 
 
-def login(page, cfg: dict) -> None:
-    page.goto(AUTO1_LOGIN, wait_until="domcontentloaded")
-    email = page.locator('input[placeholder="Email"]:visible').first
-    password = page.locator('input[type="password"]:visible').first
-    email.fill(cfg["email"])
-    password.fill(cfg["password"])
-    password.press("Enter")
+def crear_driver(cfg: dict):
+    """Chrome controlado con Selenium (el mismo enfoque que ya funcionaba con tu
+    cuenta). Selenium Manager descarga el chromedriver que toque."""
+    opts = Options()
+    if cfg["headless"]:
+        opts.add_argument("--headless=new")
+    for arg in (
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=1366,900",
+        "--lang=es-ES",
+        "--disable-blink-features=AutomationControlled",
+    ):
+        opts.add_argument(arg)
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+    if cfg["headless"]:
+        # El modo sin ventana se anuncia como "HeadlessChrome"; se disfraza de Chrome normal.
+        so = "X11; Linux x86_64" if sys.platform.startswith("linux") else "Windows NT 10.0; Win64; x64"
+        opts.add_argument(
+            f"--user-agent=Mozilla/5.0 ({so}) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        )
+    binario = os.environ.get("CHROME_BIN")
+    if binario:
+        opts.binary_location = binario
+    return webdriver.Chrome(options=opts)
+
+
+def _primer_visible(driver, por, valor, segundos: float):
+    """Primer elemento visible que coincida (la página puede tener varios
+    formularios, algunos ocultos), o None si no aparece a tiempo."""
+    fin = time.monotonic() + segundos
+    while time.monotonic() < fin:
+        for e in driver.find_elements(por, valor):
+            try:
+                if e.is_displayed():
+                    return e
+            except WebDriverException:
+                pass
+        time.sleep(0.3)
+    return None
+
+
+def login(driver, cfg: dict) -> None:
+    """Portada -> cookies -> «Accede» -> email/contraseña -> Enter."""
+    driver.get(AUTO1_HOME)
+    time.sleep(3)
+
     try:
-        page.wait_for_url(lambda url: "signin" not in url, timeout=30_000)
-    except PlaywrightTimeout:
-        texto = page.inner_text("body").lower()
-        if any(p in texto for p in ("captcha", "verific", "código", "codigo")):
+        WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "button[data-testid='cookie-banner-accept-all-cookies-button']")
+            )
+        ).click()
+        log("Cookies de Auto1 aceptadas.")
+        time.sleep(2)
+    except TimeoutException:
+        log("Sin aviso de cookies (o ya aceptado).")
+
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='header-login-button']"))
+        ).click()
+    except TimeoutException:
+        raise RuntimeError(
+            "No encuentro el botón «Accede» de la portada de Auto1: la página ha podido cambiar."
+        )
+
+    email = _primer_visible(driver, By.NAME, "email", 15)
+    password = _primer_visible(driver, By.NAME, "password", 15)
+    if not email or not password:
+        raise RuntimeError("No aparecen los campos de email y contraseña tras pulsar «Accede».")
+    email.send_keys(cfg["email"])
+    password.send_keys(cfg["password"])
+    password.send_keys(Keys.RETURN)
+
+    # Entrado = el formulario de contraseña deja de verse.
+    fin = time.monotonic() + 30
+    while time.monotonic() < fin:
+        if _primer_visible(driver, By.NAME, "password", 0.5) is None:
+            break
+    else:
+        texto = driver.find_element(By.TAG_NAME, "body").text.lower()
+        if any(p in texto for p in ("captcha", "verific", "código", "codigo", "robot")):
             raise RuntimeError(
                 "Auto1 pide verificación adicional (captcha o código): "
                 "no se puede automatizar el acceso."
             )
         raise RuntimeError("El login de Auto1 no ha avanzado: revisa email/contraseña.")
+    time.sleep(3)
     log("Login en Auto1 correcto.")
 
 
-def leer_ficha(page, url: str) -> dict | None:
-    """Datos de una ficha, o None si la ficha no muestra precio (vendida,
-    retirada o sesión caída)."""
-    page.goto(url, wait_until="domcontentloaded")
+def leer_ficha(driver, url: str) -> dict | None:
+    """Datos de una ficha, o None si la ficha no muestra precio (vendida o
+    retirada). Si lo que ha pasado es que se cayó la sesión, lanza error."""
+    driver.get(url)
     try:
-        page.wait_for_selector(".minimumBid .money-value", timeout=10_000)
-    except PlaywrightTimeout:
-        if "signin" in page.url:
-            raise RuntimeError("Se ha caído la sesión de Auto1 (redirige al login).")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".minimumBid .money-value"))
+        )
+    except TimeoutException:
+        if "signin" in driver.current_url or _primer_visible(driver, By.NAME, "password", 1):
+            raise RuntimeError("Se ha caído la sesión de Auto1 (pide iniciar sesión otra vez).")
         return None
-    return page.evaluate(JS_EXTRAER)
+    return driver.execute_script("return (" + JS_EXTRAER + ")()")
 
 
 def linea_para_api(d: dict) -> str:
@@ -226,14 +307,9 @@ def pasada(cfg: dict, on_progress=None) -> None:
     cambios = sin_cambios = con_precio = procesados = 0
     detenida = False
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=cfg["headless"])
-        context = browser.new_context(
-            locale="es-ES",
-            viewport={"width": 1366, "height": 900},
-        )
-        page = context.new_page()
-        login(page, cfg)
+    driver = crear_driver(cfg)
+    try:
+        login(driver, cfg)
 
         for i, c in enumerate(coches, 1):
             ref = c["referencia"]
@@ -243,8 +319,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
                 break
             procesados = i
             try:
-                datos = leer_ficha(page, c["url"])
-            except PlaywrightError as e:
+                datos = leer_ficha(driver, c["url"])
+            except WebDriverException as e:
                 errores.append(f"{ref}: {str(e)[:120]}")
                 continue
 
@@ -283,7 +359,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
                             )
             time.sleep(cfg["pause"] + random.uniform(0, 2))
 
-        browser.close()
+    finally:
+        driver.quit()
 
     if con_precio == 0 and not detenida:
         raise RuntimeError(

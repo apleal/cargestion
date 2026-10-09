@@ -1,8 +1,9 @@
 """Prueba paso a paso, en TU PC: ¿se conecta a Auto1 y lee una ficha?
 
-No envía nada a ningún sitio ni toca tu app: abre un navegador, entra en Auto1
-con tu usuario y contraseña, abre una ficha de ejemplo y te dice qué ha leído.
-La contraseña solo se escribe aquí (oculta) y no se imprime ni se guarda.
+Usa exactamente el mismo código que el servicio (scraper.py), con Chrome y
+Selenium como tu script que ya funcionaba. No envía nada a ningún sitio ni
+toca tu app. La contraseña solo se escribe aquí (oculta): no se imprime ni se
+guarda.
 
     cd C:\\claude\\cargestion\\scraper_auto1
     ..\\.venv\\Scripts\\python.exe probar_auto1.py
@@ -11,47 +12,37 @@ from __future__ import annotations
 
 import getpass
 import os
-import subprocess
 import sys
 
-# El navegador se guarda junto al script (no en la carpeta de usuario), así la
-# prueba no depende de cómo esté instalado Playwright en el sistema.
-os.environ.setdefault(
-    "PLAYWRIGHT_BROWSERS_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browsers"),
-)
-
-from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
-from playwright.sync_api import sync_playwright  # noqa: E402
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scraper import AUTO1_LOGIN, JS_EXTRAER, linea_para_api  # noqa: E402
+import scraper  # noqa: E402
 
-LOGIN_URL = os.environ.get("AUTO1_LOGIN_URL", AUTO1_LOGIN)
 FICHA_BASE = "https://www.auto1.com/es/app/merchant/car/"
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 
 
 def ok(msg):
-    print(f"  OK   {msg}")
+    print(f"  OK    {msg}")
 
 
 def fallo(msg):
     print(f"  FALLO {msg}")
 
 
-def captura(page, nombre):
+def captura(driver, nombre):
     ruta = os.path.join(CARPETA, nombre)
     try:
-        page.screenshot(path=ruta)
-        print(f"       (captura guardada en {ruta})")
+        driver.save_screenshot(ruta)
+        print(f"        (captura guardada en {ruta})")
     except Exception:
         pass
 
 
 def pedir_datos():
     email = os.environ.get("AUTO1_EMAIL") or input("Email de Auto1: ").strip()
-    password = os.environ.get("AUTO1_PASSWORD") or getpass.getpass("Contraseña de Auto1 (no se ve al escribir): ")
+    password = os.environ.get("AUTO1_PASSWORD") or getpass.getpass(
+        "Contraseña de Auto1 (no se ve al escribir): "
+    )
     ficha = os.environ.get("AUTO1_FICHA") or input(
         "Referencia o enlace de una ficha de ejemplo [Enter = JV37038]: "
     ).strip() or "JV37038"
@@ -61,93 +52,62 @@ def pedir_datos():
 
 def main() -> int:
     email, password, url = pedir_datos()
-    visible = os.environ.get("HEADLESS", "0") == "0"
-    print("\nEmpiezo la prueba (se abrirá un navegador).\n")
+    cfg = {
+        "email": email,
+        "password": password,
+        "headless": os.environ.get("HEADLESS", "0") != "0",
+    }
+    if os.environ.get("AUTO1_HOME"):
+        scraper.AUTO1_HOME = os.environ["AUTO1_HOME"]
 
-    with sync_playwright() as p:
-        def abrir():
-            return p.chromium.launch(headless=not visible, slow_mo=250 if visible else 0)
+    print("\nPaso 1: abrir Chrome")
+    try:
+        driver = scraper.crear_driver(cfg)
+    except Exception as e:
+        fallo(f"no se pudo arrancar Chrome: {str(e)[:300]}")
+        print("        Comprueba que Chrome está instalado y que hay conexión a internet")
+        print("        (la primera vez descarga el controlador de Chrome).")
+        return 1
+    ok("Chrome abierto")
 
+    try:
+        print("Paso 2: entrar en Auto1 (portada, cookies, «Accede», usuario y contraseña)")
         try:
-            browser = abrir()
-        except Exception as e:
-            if "Executable doesn't exist" not in str(e):
-                raise
-            print("Falta el navegador de la prueba: lo instalo ahora (1-2 minutos, solo esta vez)...")
-            r = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"])
-            if r.returncode != 0:
-                print("FALLO: no se pudo instalar el navegador. Copia aquí el error de arriba.")
-                return 1
-            browser = abrir()
-        page = browser.new_context(locale="es-ES", viewport={"width": 1366, "height": 900}).new_page()
-
-        print("Paso 1: abrir la página de acceso de Auto1")
-        try:
-            page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45_000)
-        except Exception as e:
-            fallo(f"no se pudo abrir {LOGIN_URL}: {str(e)[:150]}")
-            browser.close()
+            scraper.login(driver, cfg)
+        except RuntimeError as e:
+            fallo(str(e))
+            captura(driver, "probar_auto1_login.png")
             return 1
-        campo_email = page.locator('input[placeholder="Email"]:visible').first
-        campo_pass = page.locator('input[type="password"]:visible').first
-        try:
-            campo_email.wait_for(timeout=15_000)
-            campo_pass.wait_for(timeout=5_000)
-        except PlaywrightTimeout:
-            fallo("la página se abre pero no encuentro los campos de email/contraseña")
-            captura(page, "probar_auto1_paso1.png")
-            browser.close()
-            return 1
-        ok("página de acceso abierta y con sus campos")
-
-        print("Paso 2: iniciar sesión con tu usuario")
-        campo_email.fill(email)
-        campo_pass.fill(password)
-        campo_pass.press("Enter")
-        try:
-            page.wait_for_url(lambda u: "signin" not in u, timeout=30_000)
-        except PlaywrightTimeout:
-            fallo("el login no avanza (sigue en la página de acceso)")
-            texto = page.inner_text("body").lower()
-            if any(w in texto for w in ("captcha", "verific", "código", "codigo", "robot")):
-                print("       Auto1 parece pedir una verificación extra (captcha o código).")
-                print("       Eso impide automatizar el acceso tal cual: dímelo y vemos alternativas.")
-            else:
-                print("       Revisa que el email y la contraseña sean correctos.")
-            captura(page, "probar_auto1_paso2.png")
-            browser.close()
-            return 1
-        ok(f"sesión iniciada (ahora estás en {page.url[:70]})")
+        ok(f"sesión iniciada (estás en {driver.current_url[:70]})")
 
         print("Paso 3: abrir la ficha de ejemplo")
-        print(f"       {url}")
+        print(f"        {url}")
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=45_000)
-            page.wait_for_selector(".minimumBid .money-value", timeout=20_000)
-        except PlaywrightTimeout:
-            if "signin" in page.url:
-                fallo("al abrir la ficha te devuelve al login: la sesión no se mantiene")
-            else:
-                fallo("la ficha se abre pero no encuentro el precio (¿ficha vendida o cambió la página?)")
-            captura(page, "probar_auto1_paso3.png")
-            browser.close()
+            d = scraper.leer_ficha(driver, url)
+        except RuntimeError as e:
+            fallo(str(e))
+            captura(driver, "probar_auto1_ficha.png")
+            return 1
+        if d is None:
+            fallo("la ficha se abre pero no encuentro el precio (¿vendida, o ha cambiado la página?)")
+            print("        Prueba con otra referencia que sepas que sigue a la venta.")
+            captura(driver, "probar_auto1_ficha.png")
             return 1
         ok("ficha abierta y con precio")
 
-        print("Paso 4: leer los datos de la ficha")
-        d = page.evaluate(JS_EXTRAER)
+        print("Paso 4: datos leídos de la ficha")
         for clave in ("nombre", "precio", "tarifa", "referencia", "anio", "km", "combustible", "cambio"):
-            print(f"       {clave:12} = {d.get(clave)}")
-        captura(page, "probar_auto1_ficha.png")
+            print(f"        {clave:12} = {d.get(clave)}")
+        captura(driver, "probar_auto1_ficha.png")
         faltan = [k for k in ("nombre", "precio", "referencia") if not d.get(k)]
         if faltan:
             fallo(f"faltan datos importantes: {', '.join(faltan)}")
-            browser.close()
             return 1
         ok("datos leídos")
-        print("\n       Línea que se enviaría a tu app:")
-        print("       " + linea_para_api(d).replace("\t", "  |  "))
-        browser.close()
+        print("\n        Línea que se enviaría a tu app:")
+        print("        " + scraper.linea_para_api(d).replace("\t", "  |  "))
+    finally:
+        driver.quit()
 
     print("\nRESULTADO: TODO CORRECTO. El servicio podrá entrar en Auto1 y leer precios.")
     return 0
