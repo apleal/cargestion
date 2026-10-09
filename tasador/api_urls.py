@@ -8,4 +8,5 @@ urlpatterns = [
     path("auto1/pasada/", api_views.RegistrarPasadaAuto1View.as_view(), name="api_auto1_pasada"),
     path("auto1/latido/", api_views.LatidoAuto1View.as_view(), name="api_auto1_latido"),
     path("auto1/no-disponible/", api_views.FichaNoDisponibleAuto1View.as_view(), name="api_auto1_no_disponible"),
+    path("auto1/estado-ficha/", api_views.EstadoFichaAuto1View.as_view(), name="api_auto1_estado_ficha"),
 ]

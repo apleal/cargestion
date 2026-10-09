@@ -512,6 +512,21 @@ class Valoracion(models.Model):
         help_text="Pasadas seguidas en las que la ficha de Auto1 no mostraba precio "
         "(al llegar a 2 se marca como vendido).",
     )
+    CIERRES_AUTO1 = [
+        ("no_disponible", "Ya no está disponible"),
+        ("adjudicado", "Adjudicado (Vendido)"),
+        ("particular_rechazo", "El particular no aceptó la oferta"),
+    ]
+    cierre_auto1 = models.CharField(
+        max_length=20, blank=True, choices=CIERRES_AUTO1,
+        help_text="Motivo por el que el seguimiento automático dio por cerrado el coche "
+        "en Auto1. Los cerrados salen de la vista activa pero se conservan.",
+    )
+    compra_directa = models.BooleanField(
+        default=False,
+        help_text="Auto1 lo muestra ahora como Compra Directa (puede volver a subasta).",
+    )
+    precio_compra_directa = models.DecimalField(**DEC, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -524,6 +539,11 @@ class Valoracion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.vehiculo} · {self.fecha_valoracion.isoformat()}"
+
+    @property
+    def cerrada(self) -> bool:
+        """Fuera del seguimiento: estado final o cerrada por el servicio."""
+        return bool(self.cierre_auto1) or bool(self.estado_id and self.estado.es_final)
 
     def clean(self) -> None:
         if self.precio_venta_estimado is not None and self.precio_venta_estimado < 0:

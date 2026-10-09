@@ -85,6 +85,8 @@
             <a href="{% url 'vehiculo_detalle' v.vehiculo.pk %}">{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</a>
             <span class="ver">{{ v.vehiculo.version }}</span>
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
+            {% if v.compra_directa %}<span class="pill" title="Auto1 lo muestra ahora como Compra Directa; puede volver a subasta">🛒 compra directa{% if v.precio_compra_directa %} {{ v.precio_compra_directa|eur }}{% endif %}</span>{% endif %}
+            {% if v.cierre_auto1 %}<span class="pill no" title="Cerrado automáticamente por el seguimiento">{{ v.get_cierre_auto1_display }}</span>{% endif %}
             {% if v.historial %}
             <button type="button" class="toggle-historial" data-target="hist-{{ v.pk }}">+{{ v.historial|length }} anterior{{ v.historial|length|pluralize }}</button>
             <div class="historial-mini" id="hist-{{ v.pk }}" hidden>

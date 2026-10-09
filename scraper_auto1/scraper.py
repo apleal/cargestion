@@ -83,6 +83,38 @@ JS_EXTRAER = r"""
 """
 
 
+# Estado de la ficha cuando NO es una subasta normal con precio. Se busca por
+# texto (las clases con nombres aleatorios cambian) y solo se usan las clases
+# con nombre propio (.car-sold, .icon-indicator-description) dentro de #car-main-info.
+JS_ESTADO = r"""
+() => {
+  const norm = (t) => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const cuerpo = norm(document.body ? document.body.innerText : '');
+  if (cuerpo.includes('ya no esta disponible')) return {estado: 'no_disponible'};
+  if (cuerpo.includes('el particular no acepto tu oferta')) return {estado: 'particular_rechazo'};
+  const zona = document.querySelector('#car-main-info') || document;
+  const sold = zona.querySelector('.car-sold');
+  if (sold && /vendido/.test(norm(sold.innerText))) return {estado: 'adjudicado'};
+  const ind = Array.from(zona.querySelectorAll('.icon-indicator-description'))
+    .find((e) => /compra directa/.test(norm(e.innerText)));
+  if (ind) {
+    let precio = null;
+    const nodo = document.evaluate(
+      '//*[@id="car-main-info"]/div[3]/div[2]/div[3]/div/div/div[1]/div', document, null,
+      XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    const m = nodo ? nodo.innerText.match(/[0-9][0-9.]*(?:,[0-9]+)?/) : null;
+    if (m) {
+      const n = parseFloat(m[0].replace(/\./g, '').replace(',', '.'));
+      if (!isNaN(n)) precio = n;
+    }
+    return {estado: 'compra_directa', precio: precio};
+  }
+  return {estado: null};
+}
+"""
+
+ESTADOS_ESPECIALES = ("compra_directa", "no_disponible", "adjudicado", "particular_rechazo")
+
 _LOG_BUFFER: list[str] = []
 
 
@@ -236,19 +268,30 @@ def login(driver, cfg: dict) -> None:
     log("Login en Auto1 correcto.")
 
 
-def leer_ficha(driver, url: str) -> dict | None:
-    """Datos de una ficha, o None si la ficha no muestra precio (vendida o
-    retirada). Si lo que ha pasado es que se cayó la sesión, lanza error."""
+def leer_ficha(driver, url: str) -> dict:
+    """Lee una ficha y devuelve su estado:
+
+    {"estado": "ok", "datos": {...}}                     subasta normal con precio
+    {"estado": "compra_directa", "precio": 9800.0|None}  sigue vigente, en compra directa
+    {"estado": "no_disponible"|"adjudicado"|"particular_rechazo"}   el coche se acabó
+    {"estado": "sin_precio"}                             nada reconocible (¿vendida?)
+    Si lo que ha pasado es que se cayó la sesión, lanza error.
+    """
     driver.get(url)
-    try:
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".minimumBid .money-value"))
-        )
-    except TimeoutException:
-        if "signin" in driver.current_url or _primer_visible(driver, By.NAME, "password", 1):
-            raise RuntimeError("Se ha caído la sesión de Auto1 (pide iniciar sesión otra vez).")
-        return None
-    return driver.execute_script("return (" + JS_EXTRAER + ")()")
+    fin = time.monotonic() + 12
+    while time.monotonic() < fin:
+        try:
+            e = driver.execute_script("return (" + JS_ESTADO + ")()")
+        except WebDriverException:
+            e = None  # la página aún está cargando
+        if e and e.get("estado"):
+            return e
+        if driver.find_elements(By.CSS_SELECTOR, ".minimumBid .money-value"):
+            return {"estado": "ok", "datos": driver.execute_script("return (" + JS_EXTRAER + ")()")}
+        time.sleep(0.5)
+    if "signin" in driver.current_url or _primer_visible(driver, By.NAME, "password", 1):
+        raise RuntimeError("Se ha caído la sesión de Auto1 (pide iniciar sesión otra vez).")
+    return {"estado": "sin_precio"}
 
 
 def linea_para_api(d: dict) -> str:
@@ -293,6 +336,31 @@ def marcar_no_disponible(cfg: dict, referencia: str) -> dict:
     return r.json()
 
 
+def enviar_estado_ficha(cfg: dict, referencia: str, estado: str, precio=None) -> dict:
+    cuerpo = {"referencia": referencia, "estado": estado}
+    if precio is not None:
+        cuerpo["precio"] = precio
+    r = requests.post(
+        f"{cfg['app_url']}/api/auto1/estado-ficha/",
+        headers=api_headers(cfg),
+        json=cuerpo,
+        timeout=60,
+    )
+    if r.status_code == 404:
+        return {}  # referencia que la app no conoce: se ignora
+    if r.status_code >= 400:
+        raise RuntimeError(f"La app rechazó el estado de ficha ({r.status_code}): {r.text[:200]}")
+    return r.json()
+
+
+ETIQUETA_ESTADO = {
+    "no_disponible": "ya no está disponible",
+    "adjudicado": "Vendido (adjudicado)",
+    "particular_rechazo": "el particular no aceptó la oferta",
+    "compra_directa": "Compra Directa",
+}
+
+
 def pasada(cfg: dict, on_progress=None) -> None:
     coches = coches_en_seguimiento(cfg)
     if cfg["max_cars"]:
@@ -305,7 +373,9 @@ def pasada(cfg: dict, on_progress=None) -> None:
     avisos: list[str] = []
     sin_ficha: list[str] = []
     errores: list[str] = []
-    cambios = sin_cambios = con_precio = procesados = 0
+    cerrados: list[str] = []
+    en_directa: list[str] = []
+    cambios = sin_cambios = con_precio = explicitos = procesados = 0
     detenida = False
 
     driver = crear_driver(cfg)
@@ -320,15 +390,43 @@ def pasada(cfg: dict, on_progress=None) -> None:
                 break
             procesados = i
             try:
-                datos = leer_ficha(driver, c["url"])
+                lectura = leer_ficha(driver, c["url"])
             except WebDriverException as e:
                 errores.append(f"{ref}: {str(e)[:120]}")
                 continue
+            estado = lectura["estado"]
+            nombre = f"{c['marca']} {c['modelo']} ({ref})"
 
-            if datos is None:
+            if estado in ESTADOS_ESPECIALES:
+                explicitos += 1  # un mensaje de Auto1 prueba que la sesión es válida
+                log(f"[{i}/{len(coches)}] {ref}: {ETIQUETA_ESTADO[estado]}.")
+                if cfg["dry_run"]:
+                    continue
+                try:
+                    res = enviar_estado_ficha(cfg, ref, estado, lectura.get("precio"))
+                except RuntimeError as e:
+                    errores.append(f"{ref}: {e}")
+                    continue
+                if estado == "compra_directa":
+                    en_directa.append(ref)
+                    if res.get("cambio"):
+                        precio = lectura.get("precio")
+                        avisos.append(
+                            f"🛒 {nombre} ha pasado a Compra Directa"
+                            + (f" · {precio:,.0f} €".replace(",", ".") if precio else "")
+                        )
+                elif res.get("cerrado"):
+                    cerrados.append(f"{ref} ({ETIQUETA_ESTADO[estado]})")
+                    avisos.append(
+                        f"🏆 {nombre}: Auto1 lo marca como Vendido (adjudicado)"
+                        if estado == "adjudicado"
+                        else f"🚫 {nombre}: {ETIQUETA_ESTADO[estado]}, cerrado"
+                    )
+            elif estado == "sin_precio":
                 sin_ficha.append(ref)
                 log(f"[{i}/{len(coches)}] {ref}: sin precio en la ficha.")
             else:
+                datos = lectura["datos"]
                 if datos.get("referencia") != ref:
                     errores.append(f"{ref}: la ficha dice {datos.get('referencia')}")
                     continue
@@ -354,7 +452,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
                         if res.get("tier") or (variacion and float(variacion) < 0):
                             avisos.append(
                                 f"{'🎯 ' + res['tier'] + '% ' if res.get('tier') else ''}"
-                                f"{c['marca']} {c['modelo']} ({ref}): "
+                                f"{nombre}: "
                                 f"{res.get('precio_anterior')} -> {res.get('precio_salida')} €"
                                 f" · puja máx. 15%: {res.get('puja_maxima_15')} €"
                             )
@@ -363,14 +461,14 @@ def pasada(cfg: dict, on_progress=None) -> None:
     finally:
         driver.quit()
 
-    if con_precio == 0 and not detenida:
+    if con_precio + explicitos == 0 and not detenida:
         raise RuntimeError(
-            "Ninguna ficha mostró precio: Auto1 ha cambiado la página o la sesión "
-            "no es válida. No se ha marcado nada como vendido."
+            "Ninguna ficha mostró precio ni un estado reconocible: Auto1 ha cambiado la "
+            "página o la sesión no es válida. No se ha marcado nada como vendido."
         )
 
-    # Las fichas sin precio (con la sesión comprobada buena) se comunican a la
-    # app, que las da por vendidas tras dos pasadas seguidas.
+    # Las fichas sin precio y sin mensaje reconocible (con la sesión comprobada
+    # buena) se comunican a la app, que las da por vendidas tras dos pasadas.
     vendidos_auto: list[str] = []
     if not cfg["dry_run"] and not detenida:
         for ref in sin_ficha:
@@ -383,17 +481,22 @@ def pasada(cfg: dict, on_progress=None) -> None:
     resumen = (
         f"Auto1: {procesados} de {len(coches)} coches revisados"
         f"{' (detenida)' if detenida else ''} · {cambios} con cambios · "
-        f"{sin_cambios} sin cambios · {len(sin_ficha)} sin precio · {len(errores)} errores"
+        f"{sin_cambios} sin cambios · {len(cerrados)} cerrados · {len(en_directa)} en compra directa · "
+        f"{len(sin_ficha)} sin precio · {len(errores)} errores"
     )
     log(resumen)
     for e in errores[:10]:
         log(f"  error: {e}")
+    if cerrados:
+        log(f"  cerrados: {', '.join(cerrados)}")
     if sin_ficha:
         log(f"  sin precio (¿vendidos?): {', '.join(sin_ficha[:20])}")
     if vendidos_auto:
         log(f"  marcados como vendidos: {', '.join(vendidos_auto)}")
     detalle = "\n".join(
         (["Detenida manualmente desde la app."] if detenida else [])
+        + ([f"Cerrados: {', '.join(cerrados[:20])}"] if cerrados else [])
+        + ([f"En compra directa: {', '.join(en_directa[:20])}"] if en_directa else [])
         + ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
         + [f"Error: {e}" for e in errores[:10]]
     )

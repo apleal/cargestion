@@ -113,7 +113,10 @@ class RegistrarEscaneoAuto1View(APIView):
         if anterior and anterior.precio_salida == nuevo_precio and anterior.iva_anuncio == nuevo_iva:
             anterior.ultima_comprobacion = timezone.now()
             anterior.fallos_ficha = 0
-            anterior.save(update_fields=["updated_at", "ultima_comprobacion", "fallos_ficha"])
+            anterior.compra_directa = False  # vuelve a verse como subasta normal
+            anterior.save(
+                update_fields=["updated_at", "ultima_comprobacion", "fallos_ficha", "compra_directa"]
+            )
             return Response(
                 {
                     "valoracion_id": anterior.pk,
@@ -329,3 +332,50 @@ class LatidoAuto1View(APIView):
                 "detener": servicio.detener_solicitada,
             }
         )
+
+
+ESTADOS_FICHA = ["compra_directa", "no_disponible", "adjudicado", "particular_rechazo"]
+
+
+class EstadoFichaAuto1InputSerializer(serializers.Serializer):
+    referencia = serializers.CharField(max_length=20)
+    estado = serializers.ChoiceField(choices=ESTADOS_FICHA)
+    precio = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+
+
+class EstadoFichaAuto1View(APIView):
+    """POST: el servicio comunica lo que muestra la ficha de Auto1 de un coche
+    cuando NO es una subasta normal con precio.
+
+    - ``compra_directa`` (con ``precio`` opcional): sigue en seguimiento.
+    - ``no_disponible``, ``adjudicado``, ``particular_rechazo``: el coche ya no
+      saldrá a subasta; se cierra (sale de la vista activa, se conserva).
+    Son mensajes explícitos de Auto1, así que se aplican a la primera.
+    """
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        entrada = EstadoFichaAuto1InputSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = entrada.validated_data
+        ref = datos["referencia"].strip()
+
+        v = (
+            Valoracion.objects.filter(
+                proveedor__nombre="Auto1", lote_id=ref, vehiculo__matricula=""
+            )
+            .select_related("estado")
+            .order_by("-created_at")
+            .first()
+        )
+        if v is None:
+            return Response({"error": "Referencia desconocida."}, status=status.HTTP_404_NOT_FOUND)
+        if v.cerrada:
+            return Response({"referencia": ref, "ya_cerrado": True, "cerrado": False})
+
+        resultado = services.aplicar_estado_ficha(v, datos["estado"], datos.get("precio"))
+        return Response({"referencia": ref, **resultado})

@@ -65,7 +65,8 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
                 return val.get("puja_maxima")
         return None
 
-    tier = _tier_precio_salida(v)
+    # En Compra Directa el precio de subasta guardado ya no es el vigente.
+    tier = None if v.compra_directa else _tier_precio_salida(v)
     delta_txt, delta_signo = _delta_precio_salida(v, getattr(v, "valoracion_anterior", None))
 
     return {
@@ -375,8 +376,8 @@ def sesion_detalle(request, pk):
         # Coches ya vendidos (estado final): se quitan de la vista activa para
         # no acumular basura en el listado continuo, pero no se borran - se
         # pueden consultar con "Ver vendidos".
-        vendidos = [v for v in lotes if v.estado_id and v.estado.es_final]
-        activos = [v for v in lotes if not (v.estado_id and v.estado.es_final)]
+        vendidos = [v for v in lotes if v.cerrada]
+        activos = [v for v in lotes if not v.cerrada]
         n_vendidos = len(vendidos)
 
         # Las oportunidades (15 % > 12 % > 10 %) van arriba; dentro de cada

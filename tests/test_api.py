@@ -556,3 +556,116 @@ def test_el_panel_avisa_de_que_el_seguimiento_esta_pausado(web):
 
 def test_el_menu_tiene_enlace_a_seguimiento(web):
     assert reverse("seguimiento_auto1") in _panel_html(web)
+
+
+# ---------------------------------------------------------- estados reales de la ficha
+def _escanear(api, ref="PT46293", precio=4062):
+    linea = f"Opel Adam 1.4 Glam ecoFlex\t{precio}\t75.18\t{ref}\t2017\t116830\tGasolina\tManual"
+    return api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json").json()
+
+
+def _en_seguimiento(api):
+    return [c["referencia"] for c in api.get(reverse("api_auto1_seguimiento")).json()]
+
+
+@pytest.mark.parametrize(
+    "estado,esperado",
+    [
+        ("no_disponible", "Vendido"),
+        ("adjudicado", "Adjudicado"),
+        ("particular_rechazo", "No adjudicado"),
+    ],
+)
+def test_ficha_cerrada_sale_del_seguimiento_y_se_conserva(api, estado, esperado):
+    _escanear(api)
+    r = api.post(
+        reverse("api_auto1_estado_ficha"), {"referencia": "PT46293", "estado": estado}, format="json"
+    )
+    assert r.status_code == 200
+    assert r.json()["cerrado"] is True and r.json()["estado"] == esperado
+
+    v = models.Valoracion.objects.get(lote_id="PT46293")
+    assert v.cierre_auto1 == estado and v.estado.nombre == esperado
+    assert v.cerrada is True
+    assert "PT46293" not in _en_seguimiento(api)  # incluso "Adjudicado", que no es estado final
+    assert models.Valoracion.objects.filter(lote_id="PT46293").exists()  # no se borra
+
+    # un segundo aviso no vuelve a cambiar nada
+    r2 = api.post(
+        reverse("api_auto1_estado_ficha"), {"referencia": "PT46293", "estado": estado}, format="json"
+    )
+    assert r2.json()["ya_cerrado"] is True
+
+
+def test_compra_directa_sigue_en_seguimiento_y_no_es_oportunidad(api, web):
+    ra = _escanear(api, "AAA111", 7500)
+    web.post(
+        reverse("celda_update", args=[ra["valoracion_id"]]),
+        {"campo": "precio_venta_estimado", "valor": "15000"},
+    )
+    assert "En precio ahora mismo (1)" in web.get(reverse("panel")).content.decode()
+
+    r = api.post(
+        reverse("api_auto1_estado_ficha"),
+        {"referencia": "AAA111", "estado": "compra_directa", "precio": "9800"},
+        format="json",
+    )
+    assert r.json() == {"referencia": "AAA111", "cerrado": False, "compra_directa": True, "cambio": True}
+    v = models.Valoracion.objects.get(lote_id="AAA111")
+    assert v.compra_directa and v.precio_compra_directa == Decimal("9800.00")
+    assert not v.cerrada
+    assert "AAA111" in _en_seguimiento(api)  # se sigue vigilando
+
+    # su precio de subasta antiguo ya no cuenta como oportunidad
+    assert "En precio ahora mismo" not in web.get(reverse("panel")).content.decode()
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    grid = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
+    assert "compra directa" in grid and 'class="tier-15"' not in grid
+
+
+def test_al_volver_a_subasta_se_quita_la_marca_de_compra_directa(api):
+    _escanear(api)
+    api.post(
+        reverse("api_auto1_estado_ficha"),
+        {"referencia": "PT46293", "estado": "compra_directa", "precio": "9800"},
+        format="json",
+    )
+    assert models.Valoracion.objects.get(lote_id="PT46293").compra_directa is True
+    r = _escanear(api)  # mismo precio de subasta: "sin cambios", pero ya no es compra directa
+    assert r["sin_cambios"] is True
+    assert models.Valoracion.objects.get(lote_id="PT46293").compra_directa is False
+
+
+def test_compra_directa_que_se_vende_acaba_cerrada(api):
+    _escanear(api)
+    api.post(reverse("api_auto1_estado_ficha"),
+             {"referencia": "PT46293", "estado": "compra_directa"}, format="json")
+    api.post(reverse("api_auto1_estado_ficha"),
+             {"referencia": "PT46293", "estado": "no_disponible"}, format="json")
+    v = models.Valoracion.objects.get(lote_id="PT46293")
+    assert v.cerrada and v.compra_directa is False
+
+
+def test_la_lista_muestra_el_motivo_del_cierre_en_vendidos(api, web):
+    _escanear(api)
+    api.post(reverse("api_auto1_estado_ficha"),
+             {"referencia": "PT46293", "estado": "particular_rechazo"}, format="json")
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    url = reverse("sesion_detalle", args=[sesion.pk])
+    assert "Opel" not in web.get(url).content.decode()
+    vendidos = web.get(url, {"vendidos": "1"}).content.decode()
+    assert "Opel" in vendidos and "El particular no aceptó la oferta" in vendidos
+
+
+def test_estado_ficha_valida_entrada_y_exige_token(api, datos):
+    url = reverse("api_auto1_estado_ficha")
+    assert APIClient().post(url, {"referencia": "X", "estado": "no_disponible"}, format="json").status_code == 401
+    assert api.post(url, {"referencia": "X", "estado": "inventado"}, format="json").status_code == 400
+    assert api.post(url, {"referencia": "NOEXISTE", "estado": "no_disponible"}, format="json").status_code == 404
+
+
+def test_el_aviso_de_compra_directa_solo_es_cambio_la_primera_vez(api):
+    _escanear(api)
+    cuerpo = {"referencia": "PT46293", "estado": "compra_directa", "precio": "9800"}
+    assert api.post(reverse("api_auto1_estado_ficha"), cuerpo, format="json").json()["cambio"] is True
+    assert api.post(reverse("api_auto1_estado_ficha"), cuerpo, format="json").json()["cambio"] is False

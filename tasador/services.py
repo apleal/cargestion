@@ -297,7 +297,7 @@ def coches_auto1_en_seguimiento():
         if v.vehiculo_id in vistos:
             continue
         vistos.add(v.vehiculo_id)
-        if v.estado and v.estado.es_final:
+        if v.cerrada:
             continue
         salida.append(v)
     return salida
@@ -312,6 +312,8 @@ def oportunidades_auto1() -> list[tuple[Valoracion, str]]:
     del mejor (15 %) al más ajustado (10 %). Es lo que hay que mirar primero."""
     salida = []
     for v in coches_auto1_en_seguimiento():
+        if v.compra_directa:
+            continue  # su precio de subasta ya no es el vigente
         tier = tier_precio_salida(v)
         if tier:
             salida.append((v, tier))
@@ -331,10 +333,49 @@ def marcar_ficha_no_disponible(v: Valoracion) -> bool:
         estado = EstadoValoracion.objects.filter(nombre="Vendido").first()
         if estado:
             v.estado = estado
-            campos.append("estado")
+            v.cierre_auto1 = "no_disponible"
+            campos += ["estado", "cierre_auto1"]
             vendido = True
     v.save(update_fields=campos)
     return vendido
+
+
+CIERRE_A_ESTADO = {
+    "no_disponible": "Vendido",
+    "adjudicado": "Adjudicado",
+    "particular_rechazo": "No adjudicado",
+}
+
+
+def aplicar_estado_ficha(v: Valoracion, estado: str, precio: Decimal | None = None) -> dict:
+    """Aplica lo que el servicio ha visto en la ficha de Auto1 de un coche.
+
+    - ``compra_directa``: sigue en seguimiento (puede volver a subasta); se anota
+      con su precio y deja de contar como oportunidad de subasta.
+    - ``no_disponible`` / ``adjudicado`` / ``particular_rechazo``: el coche ya no
+      saldrá a subasta; se cierra (sale de la vista activa, sin borrarse).
+    """
+    v.ultima_comprobacion = timezone.now()
+    v.fallos_ficha = 0
+    if estado == "compra_directa":
+        era_directa = v.compra_directa
+        v.compra_directa = True
+        v.precio_compra_directa = precio
+        v.save(update_fields=[
+            "ultima_comprobacion", "fallos_ficha", "compra_directa", "precio_compra_directa",
+        ])
+        return {"cerrado": False, "compra_directa": True, "cambio": not era_directa}
+
+    campos = ["ultima_comprobacion", "fallos_ficha", "cierre_auto1", "compra_directa"]
+    v.cierre_auto1 = estado
+    v.compra_directa = False
+    nombre = CIERRE_A_ESTADO[estado]
+    est = EstadoValoracion.objects.filter(nombre=nombre).first()
+    if est:
+        v.estado = est
+        campos.append("estado")
+    v.save(update_fields=campos)
+    return {"cerrado": True, "compra_directa": False, "estado": nombre, "cambio": True}
 
 
 def crear_valoracion_desde_lote(
