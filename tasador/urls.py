@@ -7,6 +7,8 @@ urlpatterns = [
     path("seguimiento-auto1/solicitar/", views.seguimiento_auto1_solicitar, name="seguimiento_auto1_solicitar"),
     path("seguimiento/", views.seguimiento_auto1, name="seguimiento_auto1"),
     path("seguimiento/accion/", views.seguimiento_auto1_accion, name="seguimiento_auto1_accion"),
+    path("seguimiento/reabrir-cerrados/", views.auto1_reabrir_cerrados, name="auto1_reabrir_cerrados"),
+    path("valoraciones/<int:pk>/reabrir/", views.valoracion_reabrir, name="valoracion_reabrir"),
 
     path("subastas/", views.sesion_lista, name="sesion_lista"),
     path("subastas/nueva/", views.sesion_nueva, name="sesion_nueva"),

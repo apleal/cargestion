@@ -236,21 +236,20 @@ def test_el_escaneo_anota_la_ultima_comprobacion(api):
     assert v.ultima_comprobacion is not None
 
 
-def test_ficha_sin_precio_se_marca_vendido_a_la_segunda_pasada(api):
-    linea = "Opel Adam 1.4 Glam ecoFlex\t4062\t75.18\tPT46293\t2017\t116830\tGasolina\tManual"
-    api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json")
+def test_ficha_sin_precio_NUNCA_cierra_el_coche_sigue_en_seguimiento(api):
+    """Una ficha que no se entiende (p. ej. una Compra Directa no reconocida) no
+    es prueba de venta: antes se cerraba a la segunda pasada y se perdía el
+    seguimiento. Ahora solo se anota."""
+    _escanear(api)
     url = reverse("api_auto1_no_disponible")
 
-    r1 = api.post(url, {"referencia": "PT46293"}, format="json")
-    assert r1.json() == {"referencia": "PT46293", "fallos_seguidos": 1, "marcado_vendido": False}
-    assert "PT46293" in [c["referencia"] for c in api.get(reverse("api_auto1_seguimiento")).json()]
+    for esperado in (1, 2, 3, 4):
+        r = api.post(url, {"referencia": "PT46293"}, format="json")
+        assert r.json() == {"referencia": "PT46293", "fallos_seguidos": esperado, "marcado_vendido": False}
 
-    r2 = api.post(url, {"referencia": "PT46293"}, format="json")
-    assert r2.json()["marcado_vendido"] is True
     v = models.Valoracion.objects.get(lote_id="PT46293")
-    assert v.estado.nombre == "Vendido"
-    # ya no se vigila
-    assert "PT46293" not in [c["referencia"] for c in api.get(reverse("api_auto1_seguimiento")).json()]
+    assert v.estado.nombre != "Vendido" and v.cierre_auto1 == "" and not v.cerrada
+    assert "PT46293" in _en_seguimiento(api)
 
 
 def test_una_lectura_buena_pone_a_cero_los_fallos_de_ficha(api):
@@ -669,3 +668,64 @@ def test_el_aviso_de_compra_directa_solo_es_cambio_la_primera_vez(api):
     cuerpo = {"referencia": "PT46293", "estado": "compra_directa", "precio": "9800"}
     assert api.post(reverse("api_auto1_estado_ficha"), cuerpo, format="json").json()["cambio"] is True
     assert api.post(reverse("api_auto1_estado_ficha"), cuerpo, format="json").json()["cambio"] is False
+
+
+# ------------------------------------------------------------------ reabrir
+def _cerrar(api, estado="no_disponible", ref="PT46293"):
+    _escanear(api, ref)
+    api.post(reverse("api_auto1_estado_ficha"), {"referencia": ref, "estado": estado}, format="json")
+
+
+def test_reabrir_devuelve_el_coche_al_seguimiento_con_su_estado_anterior(api, web):
+    _escanear(api)
+    v = models.Valoracion.objects.get(lote_id="PT46293")
+    v.estado = models.EstadoValoracion.objects.get(nombre="Interesante")
+    v.save()
+    api.post(reverse("api_auto1_estado_ficha"), {"referencia": "PT46293", "estado": "no_disponible"}, format="json")
+    v.refresh_from_db()
+    assert v.cerrada and v.estado.nombre == "Vendido"
+    assert "PT46293" not in _en_seguimiento(api)
+
+    r = web.post(reverse("valoracion_reabrir", args=[v.pk]))
+    assert r.status_code == 302
+    v.refresh_from_db()
+    assert not v.cerrada and v.cierre_auto1 == ""
+    assert v.estado.nombre == "Interesante"  # recuperado del historial
+    assert "PT46293" in _en_seguimiento(api)
+
+
+def test_reabrir_exige_post_y_login(api, web, client):
+    _cerrar(api)
+    v = models.Valoracion.objects.get(lote_id="PT46293")
+    assert web.get(reverse("valoracion_reabrir", args=[v.pk])).status_code == 405
+    assert client.__class__().post(reverse("valoracion_reabrir", args=[v.pk])).status_code == 302
+
+
+def test_reabrir_todos_los_cerrados_automaticamente_respeta_los_marcados_a_mano(api, web):
+    _cerrar(api, "no_disponible", "AAA111")
+    _cerrar(api, "adjudicado", "BBB222")
+    _escanear(api, "CCC333")
+    manual = models.Valoracion.objects.get(lote_id="CCC333")
+    manual.estado = models.EstadoValoracion.objects.get(nombre="Vendido")  # lo cerró Alberto con el botón
+    manual.save()
+    assert _en_seguimiento(api) == []
+
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    html = web.get(reverse("sesion_detalle", args=[sesion.pk]), {"vendidos": "1"}).content.decode()
+    assert "Reabrir los 2 cerrados automáticamente" in html
+    assert "↩ Reabrir" in html
+
+    web.post(reverse("auto1_reabrir_cerrados"))
+    assert sorted(_en_seguimiento(api)) == ["AAA111", "BBB222"]
+    assert models.Valoracion.objects.get(lote_id="CCC333").cerrada  # el manual sigue cerrado
+
+
+def test_la_pantalla_de_seguimiento_cuenta_compra_directa_y_sin_precio(api, web):
+    _escanear(api, "AAA111")
+    _escanear(api, "BBB222")
+    api.post(reverse("api_auto1_estado_ficha"), {"referencia": "AAA111", "estado": "compra_directa"}, format="json")
+    api.post(reverse("api_auto1_no_disponible"), {"referencia": "BBB222"}, format="json")
+    html = web.get(reverse("seguimiento_auto1"), {"parcial": "1"}).content.decode()
+    assert "1 en compra directa" in html
+    assert "1 sin precio en su última lectura" in html
+    assert "Un coche solo se cierra cuando Auto1 dice" in html

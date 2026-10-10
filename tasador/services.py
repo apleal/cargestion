@@ -304,7 +304,6 @@ def coches_auto1_en_seguimiento():
 
 
 TIER_ORDEN = {"15": 0, "12": 1, "10": 2}
-FALLOS_PARA_VENDIDO = 2
 
 
 def oportunidades_auto1() -> list[tuple[Valoracion, str]]:
@@ -322,22 +321,58 @@ def oportunidades_auto1() -> list[tuple[Valoracion, str]]:
 
 
 def marcar_ficha_no_disponible(v: Valoracion) -> bool:
-    """Anota que la ficha de Auto1 de este coche no mostraba precio. Con
-    FALLOS_PARA_VENDIDO pasadas seguidas se da por vendido (se quita de la
-    vista activa, sin borrarlo). Devuelve True si acaba de marcarse vendido."""
+    """Anota que la ficha de Auto1 de este coche no mostraba precio ni ningún
+    mensaje que se reconozca. NUNCA cierra el coche: no entender una ficha no es
+    prueba de que se haya vendido (p. ej. una Compra Directa tampoco tiene precio
+    de subasta). Solo se cierra con un mensaje explícito de Auto1
+    (``aplicar_estado_ficha``) o a mano. Devuelve siempre False."""
     v.ultima_comprobacion = timezone.now()
     v.fallos_ficha += 1
-    campos = ["ultima_comprobacion", "fallos_ficha"]
-    vendido = False
-    if v.fallos_ficha >= FALLOS_PARA_VENDIDO:
-        estado = EstadoValoracion.objects.filter(nombre="Vendido").first()
-        if estado:
-            v.estado = estado
-            v.cierre_auto1 = "no_disponible"
-            campos += ["estado", "cierre_auto1"]
-            vendido = True
+    v.save(update_fields=["ultima_comprobacion", "fallos_ficha"])
+    return False
+
+
+def reabrir_valoracion(v: Valoracion) -> None:
+    """Devuelve un coche cerrado al seguimiento. Recupera su último estado no
+    final del historial (o «Pendiente de valorar») y limpia las marcas de cierre."""
+    previo = None
+    for h in v.history.order_by("-history_date", "-history_id"):
+        if h.estado_id and not h.estado.es_final:
+            previo = h.estado
+            break
+    if previo is None:
+        previo = EstadoValoracion.objects.filter(nombre="Pendiente de valorar").first()
+    v.cierre_auto1 = ""
+    v.compra_directa = False
+    v.fallos_ficha = 0
+    campos = ["cierre_auto1", "compra_directa", "fallos_ficha"]
+    if previo and v.estado_id != previo.pk:
+        v.estado = previo
+        campos.append("estado")
     v.save(update_fields=campos)
-    return vendido
+
+
+def reabrir_cerrados_automaticos() -> int:
+    """Reabre todos los coches de Auto1 que el seguimiento cerró por su cuenta
+    (no los marcados a mano). El siguiente escaneo los volverá a clasificar:
+    los que de verdad ya no estén se cierran con el mensaje de Auto1."""
+    proveedor = Proveedor.objects.filter(nombre="Auto1").first()
+    if not proveedor:
+        return 0
+    n = 0
+    ultimas: dict[int, Valoracion] = {}
+    for v in (
+        Valoracion.objects.filter(proveedor=proveedor)
+        .exclude(lote_id="")
+        .select_related("estado")
+        .order_by("vehiculo_id", "-created_at")
+    ):
+        ultimas.setdefault(v.vehiculo_id, v)
+    for v in ultimas.values():
+        if v.cierre_auto1:
+            reabrir_valoracion(v)
+            n += 1
+    return n
 
 
 CIERRE_A_ESTADO = {

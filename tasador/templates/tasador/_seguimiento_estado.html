@@ -58,7 +58,10 @@
       {% endif %}
     </form>
   </div>
-  <p class="mono ayuda">{{ en_seguimiento }} coche{{ en_seguimiento|pluralize }} en seguimiento. Pausar solo evita la pasada diaria automática; «Lanzar pasada ahora» sigue funcionando.</p>
+  <p class="mono ayuda">{{ en_seguimiento }} coche{{ en_seguimiento|pluralize }} en seguimiento
+    {% if en_directa_n %}· 🛒 {{ en_directa_n }} en compra directa (se siguen vigilando){% endif %}
+    {% if sin_precio_n %}· ⚠ {{ sin_precio_n }} sin precio en su última lectura (siguen en seguimiento; revísalos){% endif %}.
+    Un coche solo se cierra cuando Auto1 dice que ya no está (vendido, adjudicado, no disponible, el particular no aceptó). Pausar solo evita la pasada diaria automática; «Lanzar pasada ahora» sigue funcionando.</p>
 </div>
 
 {% if s.ultima %}

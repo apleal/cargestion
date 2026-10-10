@@ -235,14 +235,40 @@ def seguimiento_auto1_accion(request):
 
 
 @login_required
+@require_POST
+def valoracion_reabrir(request, pk):
+    """Devuelve un coche cerrado al seguimiento (p. ej. uno que se cerró mal)."""
+    v = get_object_or_404(models.Valoracion, pk=pk)
+    services.reabrir_valoracion(v)
+    messages.success(request, f"{v.vehiculo} vuelve al seguimiento.")
+    return redirect(request.META.get("HTTP_REFERER") or "panel")
+
+
+@login_required
+@require_POST
+def auto1_reabrir_cerrados(request):
+    """Reabre todos los coches que el seguimiento cerró por su cuenta."""
+    n = services.reabrir_cerrados_automaticos()
+    messages.success(
+        request,
+        f"{n} coche{'s' if n != 1 else ''} vuelve{'n' if n != 1 else ''} al seguimiento. "
+        "En la próxima pasada se comprobará de nuevo cada uno.",
+    )
+    return redirect(request.META.get("HTTP_REFERER") or "panel")
+
+
+@login_required
 def seguimiento_auto1(request):
     """Pantalla de control del seguimiento automático de Auto1: estado en vivo,
     progreso, actividad reciente y botones. ?parcial=1 devuelve solo la zona
     que se refresca sola cada pocos segundos."""
+    vivos = services.coches_auto1_en_seguimiento()
     ctx = {
         "s": _estado_seguimiento_auto1(siempre=True, n_pasadas=10),
         "eventos": list(models.EventoAuto1.objects.all()[:40]),
-        "en_seguimiento": len(services.coches_auto1_en_seguimiento()),
+        "en_seguimiento": len(vivos),
+        "sin_precio_n": sum(1 for v in vivos if v.fallos_ficha),
+        "en_directa_n": sum(1 for v in vivos if v.compra_directa),
     }
     plantilla = (
         "tasador/_seguimiento_estado.html"
@@ -354,6 +380,7 @@ def sesion_detalle(request, pk):
     ver_vendidos = request.GET.get("vendidos") == "1"
     ver_oportunidades = request.GET.get("oportunidades") == "1"
     n_vendidos = 0
+    n_cerrados_auto = 0
     n_oportunidades = 0
     if es_auto1:
         # Auto1 es un mercado continuo: el mismo coche se vuelve a pegar varias
@@ -379,6 +406,7 @@ def sesion_detalle(request, pk):
         vendidos = [v for v in lotes if v.cerrada]
         activos = [v for v in lotes if not v.cerrada]
         n_vendidos = len(vendidos)
+        n_cerrados_auto = sum(1 for v in vendidos if v.cierre_auto1)
 
         # Las oportunidades (15 % > 12 % > 10 %) van arriba; dentro de cada
         # grupo se conserva el orden de escaneo más reciente primero.
@@ -421,6 +449,7 @@ def sesion_detalle(request, pk):
         "es_auto1": es_auto1,
         "ver_vendidos": ver_vendidos,
         "n_vendidos": n_vendidos,
+        "n_cerrados_auto": n_cerrados_auto,
         "ver_oportunidades": ver_oportunidades,
         "n_oportunidades": n_oportunidades,
         "estado_vendido": models.EstadoValoracion.objects.filter(nombre="Vendido").first(),

@@ -96,7 +96,9 @@ JS_ESTADO = r"""
   const sold = zona.querySelector('.car-sold');
   if (sold && /vendido/.test(norm(sold.innerText))) return {estado: 'adjudicado'};
   const ind = Array.from(zona.querySelectorAll('.icon-indicator-description'))
-    .find((e) => /compra directa/.test(norm(e.innerText)));
+    .find((e) => /compra directa/.test(norm(e.innerText)))
+    || Array.from(zona.querySelectorAll('span, div, small, p, b, strong, li'))
+      .find((e) => e.children.length === 0 && norm(e.innerText).trim() === 'compra directa');
   if (ind) {
     let precio = null;
     const nodo = document.evaluate(
@@ -114,6 +116,9 @@ JS_ESTADO = r"""
 """
 
 ESTADOS_ESPECIALES = ("compra_directa", "no_disponible", "adjudicado", "particular_rechazo")
+# Los que CIERRAN un coche: se confirman con una segunda lectura (la página podría
+# estar a medio cargar y enseñar un mensaje provisional).
+ESTADOS_QUE_CIERRAN = ("no_disponible", "adjudicado", "particular_rechazo")
 
 _LOG_BUFFER: list[str] = []
 
@@ -285,6 +290,15 @@ def leer_ficha(driver, url: str) -> dict:
         except WebDriverException:
             e = None  # la página aún está cargando
         if e and e.get("estado"):
+            if e["estado"] in ESTADOS_QUE_CIERRAN:
+                time.sleep(2)
+                try:
+                    e2 = driver.execute_script("return (" + JS_ESTADO + ")()")
+                except WebDriverException:
+                    e2 = None
+                if e2 and e2.get("estado") == e["estado"]:
+                    return e2
+                continue  # lectura inestable: se sigue esperando, no se cierra nada
             return e
         if driver.find_elements(By.CSS_SELECTOR, ".minimumBid .money-value"):
             return {"estado": "ok", "datos": driver.execute_script("return (" + JS_EXTRAER + ")()")}
@@ -424,7 +438,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
                     )
             elif estado == "sin_precio":
                 sin_ficha.append(ref)
-                log(f"[{i}/{len(coches)}] {ref}: sin precio en la ficha.")
+                log(f"[{i}/{len(coches)}] {ref}: no se reconoce la ficha (sigue en seguimiento).")
             else:
                 datos = lectura["datos"]
                 if datos.get("referencia") != ref:
@@ -467,8 +481,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
             "página o la sesión no es válida. No se ha marcado nada como vendido."
         )
 
-    # Las fichas sin precio y sin mensaje reconocible (con la sesión comprobada
-    # buena) se comunican a la app, que las da por vendidas tras dos pasadas.
+    # Las fichas que no se reconocen se comunican a la app solo para anotarlas
+    # («sin precio»): NUNCA se cierran por eso, siguen en seguimiento.
     vendidos_auto: list[str] = []
     if not cfg["dry_run"] and not detenida:
         for ref in sin_ficha:
@@ -490,14 +504,14 @@ def pasada(cfg: dict, on_progress=None) -> None:
     if cerrados:
         log(f"  cerrados: {', '.join(cerrados)}")
     if sin_ficha:
-        log(f"  sin precio (¿vendidos?): {', '.join(sin_ficha[:20])}")
+        log(f"  fichas no reconocidas (siguen en seguimiento): {', '.join(sin_ficha[:20])}")
     if vendidos_auto:
         log(f"  marcados como vendidos: {', '.join(vendidos_auto)}")
     detalle = "\n".join(
         (["Detenida manualmente desde la app."] if detenida else [])
         + ([f"Cerrados: {', '.join(cerrados[:20])}"] if cerrados else [])
         + ([f"En compra directa: {', '.join(en_directa[:20])}"] if en_directa else [])
-        + ([f"Sin precio: {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
+        + ([f"Ficha no reconocida (siguen en seguimiento): {', '.join(sin_ficha[:20])}"] if sin_ficha else [])
         + [f"Error: {e}" for e in errores[:10]]
     )
     registrar_pasada(
