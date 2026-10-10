@@ -88,23 +88,41 @@ JS_EXTRAER = r"""
 # con nombre propio (.car-sold, .icon-indicator-description) dentro de #car-main-info.
 JS_ESTADO = r"""
 () => {
-  const norm = (t) => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const norm = (t) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const xp = (ruta) => document.evaluate(
+    ruta, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+
+  // 1) COMPRA DIRECTA (condición de Alberto): el título de la ficha, en esta
+  //    posición exacta, dice «Compra Directa»; el precio está en la otra.
+  const titulo = xp('//*[@id="car-main-info"]/div[3]/div[2]/div[1]/div[1]/span[2]');
+  if (titulo && /compra\s+directa/.test(norm(titulo.textContent))) {
+    let precio = null;
+    const nodo = xp('//*[@id="car-main-info"]/div[3]/div[2]/div[3]/div/div/div[1]/div');
+    const m = nodo ? (nodo.textContent || '').match(/[0-9][0-9.]*(?:,[0-9]+)?/) : null;
+    if (m) {
+      const n = parseFloat(m[0].replace(/\./g, '').replace(',', '.'));
+      if (!isNaN(n)) precio = n;
+    }
+    return {estado: 'compra_directa', precio: precio};
+  }
+
+  // 2) Mensajes explícitos de que el coche se acabó.
   const cuerpo = norm(document.body ? document.body.innerText : '');
   if (cuerpo.includes('ya no esta disponible')) return {estado: 'no_disponible'};
   if (cuerpo.includes('el particular no acepto tu oferta')) return {estado: 'particular_rechazo'};
   const zona = document.querySelector('#car-main-info') || document;
   const sold = zona.querySelector('.car-sold');
-  if (sold && /vendido/.test(norm(sold.innerText))) return {estado: 'adjudicado'};
+  if (sold && /vendido/.test(norm(sold.textContent))) return {estado: 'adjudicado'};
+
+  // 3) Compra Directa con otro marcado (respaldo por clase o texto exacto).
   const ind = Array.from(zona.querySelectorAll('.icon-indicator-description'))
-    .find((e) => /compra directa/.test(norm(e.innerText)))
+    .find((e) => /compra directa/.test(norm(e.textContent)))
     || Array.from(zona.querySelectorAll('span, div, small, p, b, strong, li'))
-      .find((e) => e.children.length === 0 && norm(e.innerText).trim() === 'compra directa');
+      .find((e) => e.children.length === 0 && norm(e.textContent).trim() === 'compra directa');
   if (ind) {
     let precio = null;
-    const nodo = document.evaluate(
-      '//*[@id="car-main-info"]/div[3]/div[2]/div[3]/div/div/div[1]/div', document, null,
-      XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    const m = nodo ? nodo.innerText.match(/[0-9][0-9.]*(?:,[0-9]+)?/) : null;
+    const nodo = xp('//*[@id="car-main-info"]/div[3]/div[2]/div[3]/div/div/div[1]/div');
+    const m = nodo ? (nodo.textContent || '').match(/[0-9][0-9.]*(?:,[0-9]+)?/) : null;
     if (m) {
       const n = parseFloat(m[0].replace(/\./g, '').replace(',', '.'));
       if (!isNaN(n)) precio = n;
@@ -305,7 +323,13 @@ def leer_ficha(driver, url: str) -> dict:
         time.sleep(0.5)
     if "signin" in driver.current_url or _primer_visible(driver, By.NAME, "password", 1):
         raise RuntimeError("Se ha caído la sesión de Auto1 (pide iniciar sesión otra vez).")
-    return {"estado": "sin_precio"}
+    try:
+        texto = driver.execute_script(
+            "return ((document.querySelector('#car-main-info')||document.body).innerText||'').slice(0,300)"
+        )
+    except WebDriverException:
+        texto = ""
+    return {"estado": "sin_precio", "texto": " | ".join((texto or "").split("\n"))[:260]}
 
 
 def linea_para_api(d: dict) -> str:
@@ -439,6 +463,8 @@ def pasada(cfg: dict, on_progress=None) -> None:
             elif estado == "sin_precio":
                 sin_ficha.append(ref)
                 log(f"[{i}/{len(coches)}] {ref}: no se reconoce la ficha (sigue en seguimiento).")
+                if lectura.get("texto"):
+                    log(f"    texto visto en la ficha: {lectura['texto']}")
             else:
                 datos = lectura["datos"]
                 if datos.get("referencia") != ref:
