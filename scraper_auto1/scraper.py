@@ -23,6 +23,8 @@ Variables de entorno (las credenciales NUNCA van en el repositorio):
     TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  opcionales: avisos por Telegram
     HEADLESS         0 = muestra el navegador (para depurar en tu PC)
     CHROME_BIN       ruta de Chrome si no está en el sitio habitual (opcional)
+    LOGIN_ATTEMPTS   intentos de login antes de dar el error (def. 3)
+    LOGIN_WAIT_SECONDS  espera por intento a que entre (def. 30)
 """
 from __future__ import annotations
 
@@ -241,13 +243,24 @@ def _primer_visible(driver, por, valor, segundos: float):
     return None
 
 
-def login(driver, cfg: dict) -> None:
-    """Portada -> cookies -> «Accede» -> email/contraseña -> Enter."""
+LOGIN_INTENTOS = max(1, int(os.environ.get("LOGIN_ATTEMPTS", "3")))
+LOGIN_ESPERA = float(os.environ.get("LOGIN_WAIT_SECONDS", "30"))
+PALABRAS_VERIFICACION = ("captcha", "verific", "código", "codigo", "robot")
+PALABRAS_CREDENCIALES = ("incorrect", "inválid", "invalid", "no coincide", "errónea", "erronea")
+
+
+class LoginRechazado(RuntimeError):
+    """Auto1 ha dicho claramente que no (credenciales o verificación): no se reintenta."""
+
+
+def _login_una_vez(driver, cfg: dict) -> bool:
+    """Un intento: portada -> cookies -> «Accede» -> email/contraseña -> Enter.
+    Devuelve True si entra, False si no avanza (puede ser lentitud de la página)."""
     driver.get(AUTO1_HOME)
     time.sleep(3)
 
     try:
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable(
                 (By.CSS_SELECTOR, "button[data-testid='cookie-banner-accept-all-cookies-button']")
             )
@@ -258,37 +271,79 @@ def login(driver, cfg: dict) -> None:
         log("Sin aviso de cookies (o ya aceptado).")
 
     try:
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='header-login-button']"))
         ).click()
     except TimeoutException:
         raise RuntimeError(
-            "No encuentro el botón «Accede» de la portada de Auto1: la página ha podido cambiar."
+            "No encuentro el botón «Accede» de la portada de Auto1: la página ha podido cambiar o va lenta."
         )
 
-    email = _primer_visible(driver, By.NAME, "email", 15)
-    password = _primer_visible(driver, By.NAME, "password", 15)
+    email = _primer_visible(driver, By.NAME, "email", 20)
+    password = _primer_visible(driver, By.NAME, "password", 20)
     if not email or not password:
         raise RuntimeError("No aparecen los campos de email y contraseña tras pulsar «Accede».")
+    email.clear()
     email.send_keys(cfg["email"])
+    password.clear()
     password.send_keys(cfg["password"])
+    time.sleep(1)  # que el formulario termine de reaccionar antes del Enter
     password.send_keys(Keys.RETURN)
 
     # Entrado = el formulario de contraseña deja de verse.
-    fin = time.monotonic() + 30
-    while time.monotonic() < fin:
+    inicio = time.monotonic()
+    reenviado = False
+    while time.monotonic() - inicio < LOGIN_ESPERA:
         if _primer_visible(driver, By.NAME, "password", 0.5) is None:
-            break
-    else:
-        texto = driver.find_element(By.TAG_NAME, "body").text.lower()
-        if any(p in texto for p in ("captcha", "verific", "código", "codigo", "robot")):
-            raise RuntimeError(
-                "Auto1 pide verificación adicional (captcha o código): "
-                "no se puede automatizar el acceso."
-            )
-        raise RuntimeError("El login de Auto1 no ha avanzado: revisa email/contraseña.")
-    time.sleep(3)
-    log("Login en Auto1 correcto.")
+            time.sleep(3)
+            return True
+        if not reenviado and time.monotonic() - inicio > min(10, LOGIN_ESPERA / 2):
+            # El primer Enter puede perderse si la página aún cargaba sus scripts.
+            reenviado = True
+            pw = _primer_visible(driver, By.NAME, "password", 1)
+            if pw is not None:
+                try:
+                    pw.send_keys(Keys.RETURN)
+                except WebDriverException:
+                    pass
+
+    texto = driver.find_element(By.TAG_NAME, "body").text.lower()
+    if any(p in texto for p in PALABRAS_VERIFICACION):
+        raise LoginRechazado(
+            "Auto1 pide verificación adicional (captcha o código): "
+            "no se puede automatizar el acceso."
+        )
+    if any(p in texto for p in PALABRAS_CREDENCIALES):
+        raise LoginRechazado(
+            "Auto1 rechaza el email o la contraseña (AUTO1_EMAIL / AUTO1_PASSWORD). "
+            "No se reintenta para no arriesgar un bloqueo de la cuenta."
+        )
+    return False
+
+
+def login(driver, cfg: dict) -> None:
+    """Entra en Auto1 con varios intentos: a veces el primero no avanza porque la
+    página va lenta (típico en frío), y fallar por eso no significa que el usuario
+    sea incorrecto."""
+    ultimo_error = ""
+    for intento in range(1, LOGIN_INTENTOS + 1):
+        try:
+            if _login_una_vez(driver, cfg):
+                log("Login en Auto1 correcto." + (f" (intento {intento})" if intento > 1 else ""))
+                return
+            ultimo_error = "el formulario no avanzó"
+        except LoginRechazado:
+            raise
+        except (RuntimeError, WebDriverException) as e:
+            ultimo_error = str(e)[:150]
+        if intento < LOGIN_INTENTOS:
+            espera = 5 * intento
+            log(f"Login no completado (intento {intento}/{LOGIN_INTENTOS}: {ultimo_error}); reintento en {espera} s.")
+            time.sleep(espera)
+    raise RuntimeError(
+        f"El login de Auto1 no ha avanzado tras {LOGIN_INTENTOS} intentos ({ultimo_error}). "
+        "Puede ser lentitud de la página; si se repite, revisa email y contraseña."
+    )
 
 
 def leer_ficha(driver, url: str) -> dict:
@@ -413,7 +468,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
     errores: list[str] = []
     cerrados: list[str] = []
     en_directa: list[str] = []
-    cambios = sin_cambios = con_precio = explicitos = procesados = 0
+    cambios = sin_cambios = con_precio = explicitos = procesados = reingresos = 0
     detenida = False
 
     driver = crear_driver(cfg)
@@ -428,7 +483,15 @@ def pasada(cfg: dict, on_progress=None) -> None:
                 break
             procesados = i
             try:
-                lectura = leer_ficha(driver, c["url"])
+                try:
+                    lectura = leer_ficha(driver, c["url"])
+                except RuntimeError as e:
+                    if "sesión" not in str(e) or reingresos >= 3:
+                        raise
+                    reingresos += 1
+                    log(f"Sesión caída: vuelvo a entrar en Auto1 ({reingresos}/3).")
+                    login(driver, cfg)
+                    lectura = leer_ficha(driver, c["url"])
             except WebDriverException as e:
                 errores.append(f"{ref}: {str(e)[:120]}")
                 continue
