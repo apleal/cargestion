@@ -3,6 +3,14 @@
 {% block title %}{{ vehiculo }} · Tasador{% endblock %}
 {% block content %}
 <div class="card mds-card">
+  <form method="post" action="{% url 'vehiculo_actualizar_url' vehiculo.pk %}" class="mds-form url-form">
+    {% csrf_token %}
+    <label>URL de coches.net (anuncio con el que calculas el precio de venta)
+      <input type="url" name="url_cochesnet" placeholder="https://www.coches.net/…" value="{{ vehiculo.url_cochesnet }}">
+    </label>
+    <button type="submit" class="btn mini-btn">Guardar</button>
+    {% if vehiculo.url_cochesnet %}<a class="btn mini-btn" href="{{ vehiculo.url_cochesnet }}" target="_blank" rel="noopener">🔗 Abrir</a>{% endif %}
+  </form>
   <div class="mds-cabecera">
     <span class="mds-titulo">Capacidad de suministro (MDS)</span>
     <span class="mds-ayuda" title="Market Days Supply: coches iguales/similares en venta ÷ ventas medias al día en los últimos 45 días. Referencia: ~60 días para el inventario total de usados.">?</span>

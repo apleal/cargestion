@@ -94,7 +94,7 @@
                    value="{{ v.orden_lote|default_if_none:'' }}" inputmode="numeric">
           </td>
           <td class="coche">
-            {% if f.tier %}<span class="pill pill-tier t{{ f.tier }}" title="Precio de salida ya por debajo de tu puja al {{ f.tier }} %">🎯 {{ f.tier }}%</span>{% endif %}
+            {% if f.tier %}<span class="pill pill-tier t{{ f.tier }}" title="Se puede comprar: el precio de salida ya está por debajo de tu puja máxima al {{ f.tier }} %">🎯 {{ f.tier }}% comprable</span>{% endif %}
             <a href="{% url 'vehiculo_detalle' v.vehiculo.pk %}">{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</a>
             <span class="ver">{{ v.vehiculo.version }}</span>
             {% if v.valoracion_anterior %}<span class="pill no" title="Retasación">retasado</span>{% endif %}
@@ -120,6 +120,7 @@
           <td class="num mono salida">
             {{ v.precio_salida|eur }}
             {% if f.delta_txt %}<br><span class="delta {{ f.delta_signo }}">{{ f.delta_txt }}</span>{% endif %}
+            {% if f.tier and f.margen %}<br><span class="comprable-margen" title="Lo que te queda hasta tu puja máxima al 10 %">✅ margen {{ f.margen|eur }}</span>{% endif %}
             <br>
             {% if v.fallos_ficha %}
             <span class="comprobado vieja" title="La ficha de Auto1 no mostraba precio en la última pasada">⚠ sin precio</span>
@@ -138,6 +139,10 @@
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
             <a class="buscar-comp" href="{{ v.vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener"
                title="Buscar precios de coches parecidos">🔍</a>
+            {% if v.vehiculo.url_cochesnet %}<a class="buscar-comp url-cochesnet" href="{{ v.vehiculo.url_cochesnet }}" target="_blank" rel="noopener"
+               title="Abrir el anuncio guardado en coches.net">🔗</a>{% endif %}
+            <button type="button" class="buscar-comp url-edit" data-pk="{{ v.pk }}" data-url="{{ v.vehiculo.url_cochesnet }}"
+                    title="Guardar o cambiar el enlace de coches.net de este coche">✎</button>
           </td>
           {% if es_auto1 %}
           <td class="num col-sec">
@@ -236,8 +241,8 @@
                 cocheTd.insertBefore(pill, cocheTd.firstChild);
               }
               pill.className = 'pill pill-tier t'+j.tier;
-              pill.title = 'Precio de salida ya por debajo de tu puja al '+j.tier+' %';
-              pill.textContent = '🎯 '+j.tier+'%';
+              pill.title = 'Se puede comprar: el precio de salida ya está por debajo de tu puja máxima al '+j.tier+' %';
+              pill.textContent = '🎯 '+j.tier+'% comprable';
             } else if(pill){
               pill.remove();
             }
@@ -246,6 +251,35 @@
           setTimeout(function(){ tr.classList.remove('recalc'); }, 600);
         })
         .catch(function(){ el.classList.remove('guardando'); el.classList.add('err'); });
+    });
+  });
+
+  document.querySelectorAll('.url-edit').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var nuevo = window.prompt('Enlace de coches.net de este coche (déjalo vacío para quitarlo):', btn.dataset.url || '');
+      if(nuevo === null) return;
+      var body = new URLSearchParams({campo: 'url_cochesnet', valor: nuevo.trim()});
+      btn.disabled = true;
+      fetch(urlCelda(btn.dataset.pk), {method:'POST', body: body, headers:{'X-CSRFToken': csrf}})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          btn.disabled = false;
+          if(j.error){ alert(j.error); return; }
+          btn.dataset.url = j.url_cochesnet || '';
+          var celda = btn.parentNode, a = celda.querySelector('.url-cochesnet');
+          if(j.url_cochesnet){
+            if(!a){
+              a = document.createElement('a');
+              a.className = 'buscar-comp url-cochesnet';
+              a.target = '_blank'; a.rel = 'noopener';
+              a.title = 'Abrir el anuncio guardado en coches.net';
+              a.textContent = '🔗';
+              celda.insertBefore(a, btn);
+            }
+            a.href = j.url_cochesnet;
+          } else if(a){ a.remove(); }
+        })
+        .catch(function(){ btn.disabled = false; });
     });
   });
 

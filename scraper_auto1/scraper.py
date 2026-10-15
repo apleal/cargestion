@@ -464,6 +464,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
         return
 
     avisos: list[str] = []
+    comprables: list[tuple[int, str]] = []
     sin_ficha: list[str] = []
     errores: list[str] = []
     cerrados: list[str] = []
@@ -543,6 +544,17 @@ def pasada(cfg: dict, on_progress=None) -> None:
                     except RuntimeError as e:
                         errores.append(f"{ref}: {e}")
                         continue
+                    if res.get("tier"):
+                        # Se puede comprar: el precio de salida ya está por debajo de la
+                        # puja máxima de algún objetivo. Se cuenta SIEMPRE (haya cambiado
+                        # o no) para que el aviso diga qué hay comprable ahora.
+                        comprables.append((
+                            ORDEN_TIER.get(res["tier"], 9),
+                            f"{'🆕 ' if not res.get('sin_cambios') else ''}{nombre}: "
+                            f"salida {_eur(res.get('precio_salida'))} · 🎯 {res['tier']}% · "
+                            f"tope al 10%: {_eur(res.get('puja_maxima_10'))} "
+                            f"(margen {_eur(res.get('margen_10'))})",
+                        ))
                     if res.get("sin_cambios"):
                         sin_cambios += 1
                     else:
@@ -552,12 +564,10 @@ def pasada(cfg: dict, on_progress=None) -> None:
                             f"[{i}/{len(coches)}] {ref}: {res.get('precio_anterior')} -> "
                             f"{res.get('precio_salida')} (tier {res.get('tier')})"
                         )
-                        if res.get("tier") or (variacion and float(variacion) < 0):
-                            avisos.append(
-                                f"{'🎯 ' + res['tier'] + '% ' if res.get('tier') else ''}"
-                                f"{nombre}: "
-                                f"{res.get('precio_anterior')} -> {res.get('precio_salida')} €"
-                                f" · puja máx. 15%: {res.get('puja_maxima_15')} €"
+                        if not res.get("tier") and variacion and float(variacion) < 0:
+                            avisos.append(  # baja de precio que aún no llega a comprable
+                                f"📉 {nombre}: {_eur(res.get('precio_anterior'))} -> "
+                                f"{_eur(res.get('precio_salida'))}"
                             )
             time.sleep(cfg["pause"] + random.uniform(0, 2))
 
@@ -606,7 +616,7 @@ def pasada(cfg: dict, on_progress=None) -> None:
     registrar_pasada(
         cfg, True, procesados, cambios, sin_cambios, len(sin_ficha), len(errores), detalle
     )
-    notificar(cfg, resumen, avisos, vendidos_auto, errores)
+    notificar(cfg, resumen, avisos, vendidos_auto, errores, comprables)
 
 
 def registrar_pasada(
@@ -653,15 +663,34 @@ def enviar_aviso(cfg, texto: str, extra: dict | None = None) -> None:
             log(f"No se pudo avisar al webhook: {e}")
 
 
-def notificar(cfg, resumen, avisos, vendidos_auto, errores) -> None:
-    if not (avisos or vendidos_auto or errores):
+ORDEN_TIER = {"15": 0, "12": 1, "10": 2}
+
+
+def _eur(valor) -> str:
+    """'3900.00' -> '3.900 €'; vacío o no numérico -> '—'."""
+    try:
+        return f"{float(valor):,.0f} €".replace(",", ".")
+    except (TypeError, ValueError):
+        return "—"
+
+
+def notificar(cfg, resumen, avisos, vendidos_auto, errores, comprables=None) -> None:
+    comprables = sorted(comprables or [])
+    if not (avisos or vendidos_auto or errores or comprables):
         return  # solo molesta si hay algo que decir
-    partes = [resumen, *avisos]
+    partes = [resumen]
+    if comprables:
+        partes.append(f"✅ SE PUEDEN COMPRAR AHORA ({len(comprables)}) — 🆕 = nuevo o ha cambiado:")
+        partes += [f"• {texto}" for _, texto in comprables]
+    partes += avisos
     if vendidos_auto:
         partes.append("🚫 Ya no disponibles en Auto1 (marcados vendidos): " + ", ".join(vendidos_auto))
     enviar_aviso(
         cfg, "\n".join(partes),
-        {"avisos": avisos, "vendidos": vendidos_auto, "errores": errores},
+        {
+            "avisos": avisos, "vendidos": vendidos_auto, "errores": errores,
+            "comprables": [t for _, t in comprables],
+        },
     )
 
 

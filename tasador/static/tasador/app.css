@@ -224,3 +224,7 @@ table.rejilla.sala td{padding:9px 12px}
 .evento .mono{color:var(--ink-soft);margin-right:6px}
 .ayuda-lista{font-size:.88rem;line-height:1.6;padding-left:20px}
 .ayuda-lista code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:.82rem}
+
+.comprable-margen{font-size:.7rem;color:var(--good);font-weight:600}
+.url-edit{background:none;border:0;cursor:pointer;padding:0 2px;font:inherit}
+.url-form input{width:min(420px,70vw)}

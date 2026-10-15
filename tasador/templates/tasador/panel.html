@@ -66,7 +66,7 @@
   <h2>🎯 En precio ahora mismo ({{ oportunidades|length }})</h2>
   <p class="mono ayuda">Coches de Auto1 cuyo precio de salida actual ya está por debajo de tu puja máxima, del mejor objetivo (15&nbsp;%) al más ajustado (10&nbsp;%).</p>
   <div class="tw"><table>
-    <thead><tr><th>Objetivo</th><th>Coche</th><th class="num">Salida</th><th class="num">Puja máx. 15%</th><th>Comprobado</th></tr></thead>
+    <thead><tr><th>Objetivo</th><th>Coche</th><th class="num">Salida</th><th class="num">Puja máx. 15%</th><th class="num">Tope 10%</th><th class="num">Margen</th><th>Comprobado</th></tr></thead>
     <tbody>
       {% for o in oportunidades %}
       <tr class="tier-{{ o.tier }}">
@@ -75,6 +75,8 @@
           {% if o.v.lote_id %}<span class="mono ayuda">{{ o.v.lote_id }}</span>{% endif %}</td>
         <td class="num">{{ o.v.precio_salida|eur }}</td>
         <td class="num destacado">{{ o.v.r_puja_maxima_principal|eur }}</td>
+        <td class="num">{{ o.puja_maxima_10|eur }}</td>
+        <td class="num">{% if o.margen_10 %}<b>{{ o.margen_10|eur }}</b>{% else %}—{% endif %}</td>
         <td class="mono">{% if o.v.ultima_comprobacion %}{{ o.v.ultima_comprobacion|date:"d/m H:i" }}{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}

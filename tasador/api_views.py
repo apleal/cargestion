@@ -133,6 +133,7 @@ class RegistrarEscaneoAuto1View(APIView):
                         else None
                     ),
                     "tier": services.tier_precio_salida(anterior),
+                    **services.datos_comprable(anterior),
                     "en_precio": services.en_precio(anterior),
                 },
                 status=status.HTTP_200_OK,
@@ -165,6 +166,7 @@ class RegistrarEscaneoAuto1View(APIView):
                     else None
                 ),
                 "tier": services.tier_precio_salida(v),
+                **services.datos_comprable(v),
                 "en_precio": services.en_precio(v),
             },
             status=status.HTTP_201_CREATED,

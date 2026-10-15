@@ -39,6 +39,7 @@
           <p><label>Precio de salida / puja mínima (€)</label>{{ form.precio_salida }}</p>
           <p><label>Precio de venta estimado (€)
               {% if vehiculo %}<a class="buscar-comp-txt" href="{{ vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener">🔍 ver precios parecidos</a>{% endif %}
+              {% if vehiculo.url_cochesnet %}<a class="buscar-comp-txt" href="{{ vehiculo.url_cochesnet }}" target="_blank" rel="noopener">🔗 anuncio guardado en coches.net</a>{% endif %}
             </label>{{ form.precio_venta_estimado }}</p>
           <p><label>Descuento comisión (%)</label>{{ form.descuento_comision_pct }}</p>
           <p><label>Estado carrocería</label>{{ form.estado_carroceria }}</p>

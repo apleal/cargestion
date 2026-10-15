@@ -6,7 +6,9 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.core.validators import URLValidator
 from django.db.models import Count, F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -80,6 +82,7 @@ def _fila_valoracion(v: models.Valoracion) -> dict:
         "zona_origen": v.zona_origen,
         "precio_salida": str(v.precio_salida),
         "tier": tier,
+        "margen": services.datos_comprable(v)["margen_10"],
         "en_precio": tier == "15",
         "delta_txt": delta_txt,
         "delta_signo": delta_signo,
@@ -299,7 +302,8 @@ def panel(request):
     valoraciones = models.Valoracion.objects.select_related("vehiculo", "estado")
     # Último escaneo de cada coche vivo de Auto1 que ya llega a 15/12/10 %.
     oportunidades = [
-        {"v": v, "tier": tier} for v, tier in services.oportunidades_auto1()
+        {"v": v, "tier": tier, **services.datos_comprable(v)}
+        for v, tier in services.oportunidades_auto1()
     ]
     ctx = {
         "seguimiento_auto1": _estado_seguimiento_auto1(),
@@ -523,15 +527,27 @@ def celda_update(request, pk):
                 v.piezas_pintura = v.estado_carroceria.piezas_estimadas
         elif campo == "kilometros":
             v.kilometros = int(valor) if valor else None
+        elif campo == "url_cochesnet":
+            # es del coche (no de la tasación): vale para todas sus retasaciones
+            valor = valor.strip()
+            if valor:
+                URLValidator(schemes=["http", "https"])(valor)
+            v.vehiculo.url_cochesnet = valor
+            v.vehiculo.save(update_fields=["url_cochesnet"])
         else:
             return JsonResponse({"error": f"campo no editable: {campo}"}, status=400)
     except (InvalidOperation, ValueError):
         return JsonResponse({"error": "valor no válido"}, status=400)
+    except ValidationError:
+        return JsonResponse(
+            {"error": "Eso no parece un enlace (debe empezar por https://)."}, status=400
+        )
 
     v.save()
     services.recalcular_y_guardar(v)
     fila = _fila_valoracion(v)
     fila["piezas_pintura"] = v.piezas_pintura
+    fila["url_cochesnet"] = v.vehiculo.url_cochesnet
     return JsonResponse(fila)
 
 
@@ -716,6 +732,27 @@ def calcular_api(request):
             },
         }
     )
+
+
+@login_required
+@require_POST
+def vehiculo_actualizar_url(request, pk):
+    """Guarda (o borra, si se deja vacío) la URL del anuncio de coches.net del
+    coche, editable desde su ficha."""
+    veh = get_object_or_404(models.Vehiculo, pk=pk)
+    url = (request.POST.get("url_cochesnet") or "").strip()
+    try:
+        if url:
+            URLValidator(schemes=["http", "https"])(url)
+    except ValidationError:
+        messages.error(request, "Eso no parece un enlace (debe empezar por https://).")
+        return redirect("vehiculo_detalle", pk=veh.pk)
+    veh.url_cochesnet = url
+    veh.save(update_fields=["url_cochesnet"])
+    messages.success(
+        request, "Enlace de coches.net guardado." if url else "Enlace de coches.net borrado."
+    )
+    return redirect("vehiculo_detalle", pk=veh.pk)
 
 
 @login_required

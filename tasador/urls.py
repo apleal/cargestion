@@ -27,6 +27,7 @@ urlpatterns = [
     path("vehiculos/<int:pk>/eliminar/", views.vehiculo_eliminar, name="vehiculo_eliminar"),
     path("vehiculos/<int:pk>/favorito/", views.vehiculo_favorito_toggle, name="vehiculo_favorito_toggle"),
     path("vehiculos/<int:pk>/mds/", views.vehiculo_actualizar_mds, name="vehiculo_actualizar_mds"),
+    path("vehiculos/<int:pk>/url-cochesnet/", views.vehiculo_actualizar_url, name="vehiculo_actualizar_url"),
     path("favoritos/", views.favoritos_lista, name="favoritos_lista"),
     path("buscar/", views.buscar_vehiculo, name="buscar_vehiculo"),
     path("configuracion/transporte/", views.config_transporte, name="config_transporte"),

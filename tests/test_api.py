@@ -729,3 +729,115 @@ def test_la_pantalla_de_seguimiento_cuenta_compra_directa_y_sin_precio(api, web)
     assert "1 en compra directa" in html
     assert "1 sin precio en su última lectura" in html
     assert "Un coche solo se cierra cuando Auto1 dice" in html
+
+
+# ---------------------------------------------------------------- comprable y coches.net
+def _comprable(api, web, ref="AAA111", salida=7500, venta="15000"):
+    r = _escanear(api, ref, salida)
+    web.post(
+        reverse("celda_update", args=[r["valoracion_id"]]),
+        {"campo": "precio_venta_estimado", "valor": venta},
+    )
+    return models.Valoracion.objects.get(lote_id=ref)
+
+
+def test_el_escaneo_dice_si_se_puede_comprar_con_tope_y_margen(api, web):
+    _comprable(api, web)
+    linea = "Opel Adam 1.4 Glam ecoFlex\t7500\t75.18\tAAA111\t2017\t116830\tGasolina\tManual"
+    d = api.post(reverse("api_auto1_escaneo"), {"texto": linea}, format="json").json()
+    assert d["comprable"] is True and d["tier"] == "15"
+    assert Decimal(d["puja_maxima_10"]) > Decimal("7500")
+    assert Decimal(d["margen_10"]) == Decimal(d["puja_maxima_10"]) - Decimal("7500")
+
+
+def test_un_coche_caro_no_es_comprable(api):
+    d = _escanear(api, "BBB222", 14000)
+    assert d["comprable"] is False and d["margen_10"] is None
+
+
+def test_la_lista_senala_comprable_con_su_margen(api, web):
+    v = _comprable(api, web)
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    html = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
+    assert "🎯 15% comprable" in html and "✅ margen" in html
+
+
+def test_el_panel_muestra_tope_y_margen_de_las_oportunidades(api, web):
+    _comprable(api, web)
+    html = web.get(reverse("panel")).content.decode()
+    assert "Tope 10%" in html and "Margen" in html
+
+
+def test_la_compra_directa_no_es_comprable_ni_tiene_margen(api, web):
+    _comprable(api, web)
+    api.post(reverse("api_auto1_estado_ficha"), {"referencia": "AAA111", "estado": "compra_directa"}, format="json")
+    from tasador import services
+
+    assert services.datos_comprable(models.Valoracion.objects.get(lote_id="AAA111"))["comprable"] is False
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    html = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
+    assert "comprable" not in html.split("<tbody>")[1].split("</tbody>")[0].replace("compra directa", "")
+
+
+def test_guardar_la_url_de_cochesnet_desde_la_rejilla(api, web):
+    v = _escanear(api)
+    pk = v["valoracion_id"]
+    url = "https://www.coches.net/opel-adam-gasolina-2017-12345678-covo.aspx"
+    r = web.post(reverse("celda_update", args=[pk]), {"campo": "url_cochesnet", "valor": url})
+    assert r.status_code == 200 and r.json()["url_cochesnet"] == url
+    veh = models.Valoracion.objects.get(pk=pk).vehiculo
+    assert veh.url_cochesnet == url
+
+    sesion = models.SesionSubasta.objects.get(proveedor__nombre="Auto1")
+    html = web.get(reverse("sesion_detalle", args=[sesion.pk])).content.decode()
+    assert f'href="{url}"' in html and "Abrir el anuncio guardado en coches.net" in html
+
+    # vaciarlo lo quita
+    web.post(reverse("celda_update", args=[pk]), {"campo": "url_cochesnet", "valor": ""})
+    veh.refresh_from_db()
+    assert veh.url_cochesnet == ""
+
+
+def test_url_de_cochesnet_invalida_se_rechaza(api, web):
+    pk = _escanear(api)["valoracion_id"]
+    r = web.post(reverse("celda_update", args=[pk]), {"campo": "url_cochesnet", "valor": "esto no es un enlace"})
+    assert r.status_code == 400 and "enlace" in r.json()["error"]
+    r2 = web.post(reverse("celda_update", args=[pk]), {"campo": "url_cochesnet", "valor": "javascript:alert(1)"})
+    assert r2.status_code == 400
+    assert models.Valoracion.objects.get(pk=pk).vehiculo.url_cochesnet == ""
+
+
+def test_la_url_de_cochesnet_sobrevive_a_la_retasacion(api, web):
+    pk = _escanear(api, precio=4062)["valoracion_id"]
+    url = "https://www.coches.net/anuncio-1.aspx"
+    web.post(reverse("celda_update", args=[pk]), {"campo": "url_cochesnet", "valor": url})
+    r2 = _escanear(api, precio=3900)  # el precio baja: nueva tasación del mismo coche
+    assert r2["es_retasacion"] is True and r2["valoracion_id"] != pk
+    assert models.Valoracion.objects.get(pk=r2["valoracion_id"]).vehiculo.url_cochesnet == url
+
+
+def test_guardar_la_url_desde_la_ficha_del_vehiculo(api, web):
+    veh = models.Valoracion.objects.get(pk=_escanear(api)["valoracion_id"]).vehiculo
+    url = "https://www.coches.net/otro-anuncio.aspx"
+    r = web.post(reverse("vehiculo_actualizar_url", args=[veh.pk]), {"url_cochesnet": url})
+    assert r.status_code == 302
+    veh.refresh_from_db()
+    assert veh.url_cochesnet == url
+    html = web.get(reverse("vehiculo_detalle", args=[veh.pk])).content.decode()
+    assert url in html and "🔗 Abrir" in html
+
+    web.post(reverse("vehiculo_actualizar_url", args=[veh.pk]), {"url_cochesnet": "basura"})
+    veh.refresh_from_db()
+    assert veh.url_cochesnet == url  # una URL inválida no pisa la guardada
+
+    web.post(reverse("vehiculo_actualizar_url", args=[veh.pk]), {"url_cochesnet": ""})
+    veh.refresh_from_db()
+    assert veh.url_cochesnet == ""
+
+
+def test_la_ficha_de_costes_enlaza_al_anuncio_guardado(api, web):
+    v = models.Valoracion.objects.get(pk=_escanear(api)["valoracion_id"])
+    v.vehiculo.url_cochesnet = "https://www.coches.net/mi-anuncio.aspx"
+    v.vehiculo.save()
+    html = web.get(reverse("valoracion_editar", args=[v.pk])).content.decode()
+    assert "anuncio guardado en coches.net" in html and "mi-anuncio.aspx" in html

@@ -387,6 +387,11 @@ class Vehiculo(models.Model):
         default=False, db_index=True,
         help_text="Marcado para seguirlo de cerca; se mantiene aunque se retase.",
     )
+    url_cochesnet = models.URLField(
+        "URL de coches.net", max_length=500, blank=True,
+        help_text="Anuncio de coches.net que usas para saber a cuánto vender este coche; "
+        "se guarda para no tener que buscarlo otra vez y vale para todas sus tasaciones.",
+    )
     mds_modelo = models.PositiveSmallIntegerField(
         "MDS modelo", null=True, blank=True,
         help_text="Market Days Supply: coches iguales en venta ÷ ventas medias/día "

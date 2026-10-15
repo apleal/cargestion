@@ -306,6 +306,30 @@ def coches_auto1_en_seguimiento():
 TIER_ORDEN = {"15": 0, "12": 1, "10": 2}
 
 
+def datos_comprable(v: Valoracion) -> dict:
+    """¿Se puede comprar ahora? Precio de salida real <= puja máxima de algún
+    objetivo (15/12/10 %). Incluye el tope al 10 % y cuánto margen queda hasta él.
+    Una Compra Directa nunca es «comprable» por subasta (su precio de subasta ya
+    no es el vigente)."""
+    esc = v.r_escenarios or {}
+
+    def puja(pref):
+        for k, val in esc.items():
+            if k.startswith(pref) and val.get("puja_maxima"):
+                return Decimal(val["puja_maxima"])
+        return None
+
+    tier = None if v.compra_directa else tier_precio_salida(v)
+    p12, p10 = puja("0.12"), puja("0.10")
+    margen = (p10 - v.precio_salida) if (tier and p10 is not None) else None
+    return {
+        "comprable": bool(tier),
+        "puja_maxima_12": str(p12) if p12 is not None else None,
+        "puja_maxima_10": str(p10) if p10 is not None else None,
+        "margen_10": str(margen) if margen is not None else None,
+    }
+
+
 def oportunidades_auto1() -> list[tuple[Valoracion, str]]:
     """Coches vivos de Auto1 cuyo precio de salida ya llega a algún objetivo,
     del mejor (15 %) al más ajustado (10 %). Es lo que hay que mirar primero."""
