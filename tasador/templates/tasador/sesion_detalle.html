@@ -63,9 +63,9 @@
           {% if es_auto1 %}<th class="num">Salida</th>{% endif %}
           <th class="num destacado puja-15">Puja 15%</th><th class="num destacado col-sec">Puja 12%</th><th class="num destacado col-sec">Puja 10%</th>
           <th class="num">Venta €</th>
-          {% if es_auto1 %}<th class="num col-sec">IVA anuncio</th>{% else %}<th class="col-sec">Origen</th><th class="num col-sec">Transp. <a href="{% url 'config_transporte' %}" title="Editar tarifas de transporte">⚙️</a></th>{% endif %}
+          {% if not es_auto1 %}<th class="col-sec">Origen</th><th class="num col-sec">Transp. <a href="{% url 'config_transporte' %}" title="Editar tarifas de transporte">⚙️</a></th>{% endif %}
           <th class="col-sec">Carrocería</th><th class="num col-sec">Piezas</th>
-          <th class="num col-sec">Beneficio</th><th class="num col-sec">Rent.</th>
+          <th class="num col-sec">Beneficio</th>
         </tr>
       </thead>
       <tbody>
@@ -77,16 +77,17 @@
                     data-vehiculo="{{ v.vehiculo.pk }}" title="Marcar como favorito">
               {% if v.vehiculo.favorito %}★{% else %}☆{% endif %}
             </button>
-            <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
+            <a class="btn mini-btn ico-btn" href="{% url 'valoracion_editar' v.pk %}"
+               title="Costes: abrir la ficha para ajustar los costes de este coche" aria-label="Costes">🧮</a>
             {% if es_auto1 and ver_vendidos %}
             <form method="post" action="{% url 'valoracion_reabrir' v.pk %}" style="display:inline">
               {% csrf_token %}
-              <button type="submit" class="btn mini-btn" title="Devolver este coche al seguimiento">↩ Reabrir</button>
+              <button type="submit" class="btn mini-btn ico-btn" title="Reabrir: devolver este coche al seguimiento" aria-label="Reabrir">↩</button>
             </form>
             {% endif %}
             {% if es_auto1 and estado_vendido and not ver_vendidos %}
-            <button type="button" class="btn mini-btn vendido-toggle" data-valoracion="{{ v.pk }}"
-                    title="Marcar como vendido y quitarlo de la lista">Vendido</button>
+            <button type="button" class="btn mini-btn ico-btn vendido-toggle" data-valoracion="{{ v.pk }}"
+                    title="Vendido: marcar como vendido y quitarlo de la lista" aria-label="Vendido">🏷️</button>
             {% endif %}
           </td>
           <td class="num col-sec">
@@ -137,19 +138,26 @@
           <td class="num venta-cell">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
-            <a class="buscar-comp" href="{{ v.vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener"
-               title="Buscar precios de coches parecidos">🔍</a>
-            {% if v.vehiculo.url_cochesnet %}<a class="buscar-comp url-cochesnet" href="{{ v.vehiculo.url_cochesnet }}" target="_blank" rel="noopener"
-               title="Abrir el anuncio guardado en coches.net">🔗</a>{% endif %}
-            <button type="button" class="buscar-comp url-edit" data-pk="{{ v.pk }}" data-url="{{ v.vehiculo.url_cochesnet }}"
-                    title="Guardar o cambiar el enlace de coches.net de este coche">✎</button>
+            <div class="enlaces-coche" data-pk="{{ v.pk }}" data-url="{{ v.vehiculo.url_cochesnet }}"
+                 data-buscar="{{ v.vehiculo|buscar_comparables_url }}">
+              {% if v.vehiculo.url_cochesnet %}
+              <a class="chip chip-ok url-cochesnet" href="{{ v.vehiculo.url_cochesnet }}" target="_blank" rel="noopener"
+                 title="Abrir el anuncio guardado en coches.net">🔗 coches.net</a>
+              <button type="button" class="chip url-edit" title="Cambiar o quitar el enlace de coches.net">✎</button>
+              {% else %}
+              <a class="chip" href="{{ v.vehiculo|buscar_comparables_url }}" target="_blank" rel="noopener"
+                 title="Buscar este coche para saber a cuánto venderlo">🔍 buscar</a>
+              <button type="button" class="chip url-edit" title="Pegar el enlace de coches.net de este coche (queda guardado)">＋ enlace</button>
+              {% endif %}
+            </div>
+            <div class="url-inline" hidden>
+              <input type="url" class="url-input" placeholder="Pega aquí el enlace de coches.net" autocomplete="off">
+              <button type="button" class="chip chip-ok url-guardar">Guardar</button>
+              <button type="button" class="chip url-cancelar" title="Cancelar">✕</button>
+            </div>
+            <div class="url-msg"></div>
           </td>
-          {% if es_auto1 %}
-          <td class="num col-sec">
-            <input class="celda venta" data-campo="iva_anuncio" data-val="{{ v.pk }}"
-                   value="{{ v.iva_anuncio|floatformat:2 }}" inputmode="decimal">
-          </td>
-          {% else %}
+          {% if not es_auto1 %}
           <td class="col-sec">
             <select class="celda origen" data-campo="zona_origen" data-val="{{ v.pk }}">
               {% for z in zonas_transporte %}
@@ -175,11 +183,10 @@
                    value="{{ v.piezas_pintura }}" inputmode="numeric">
           </td>
           <td class="num beneficio col-sec">{{ f.beneficio|eur }}</td>
-          <td class="num rent col-sec">{{ f.rentabilidad }}</td>
         </tr>
         {% endwith %}
         {% empty %}
-        <tr><td colspan="15" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
+        <tr><td colspan="14" class="mono vacio">Sin lotes todavía. Pega las líneas del scraper arriba.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -221,7 +228,6 @@
           tr.querySelector('.puja-12').textContent = nf(j.puja_12);
           tr.querySelector('.puja-10').textContent = nf(j.puja_10);
           tr.querySelector('.beneficio').textContent = nf(j.beneficio);
-          tr.querySelector('.rent').textContent = j.rentabilidad;
           if(j.transporte !== undefined){
             var tp = tr.querySelector('.transporte');
             if(tp) tp.textContent = nf(j.transporte);
@@ -254,33 +260,74 @@
     });
   });
 
-  document.querySelectorAll('.url-edit').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var nuevo = window.prompt('Enlace de coches.net de este coche (déjalo vacío para quitarlo):', btn.dataset.url || '');
-      if(nuevo === null) return;
-      var body = new URLSearchParams({campo: 'url_cochesnet', valor: nuevo.trim()});
-      btn.disabled = true;
-      fetch(urlCelda(btn.dataset.pk), {method:'POST', body: body, headers:{'X-CSRFToken': csrf}})
-        .then(function(r){ return r.json(); })
-        .then(function(j){
-          btn.disabled = false;
-          if(j.error){ alert(j.error); return; }
-          btn.dataset.url = j.url_cochesnet || '';
-          var celda = btn.parentNode, a = celda.querySelector('.url-cochesnet');
-          if(j.url_cochesnet){
-            if(!a){
-              a = document.createElement('a');
-              a.className = 'buscar-comp url-cochesnet';
-              a.target = '_blank'; a.rel = 'noopener';
-              a.title = 'Abrir el anuncio guardado en coches.net';
-              a.textContent = '🔗';
-              celda.insertBefore(a, btn);
-            }
-            a.href = j.url_cochesnet;
-          } else if(a){ a.remove(); }
-        })
-        .catch(function(){ btn.disabled = false; });
-    });
+  // ---- enlace de coches.net: abrir el guardado, o pegarlo en un panel junto a la celda
+  function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function pintarEnlaces(cont){
+    var url = cont.dataset.url || '';
+    cont.innerHTML = url
+      ? '<a class="chip chip-ok url-cochesnet" href="'+esc(url)+'" target="_blank" rel="noopener" title="Abrir el anuncio guardado en coches.net">🔗 coches.net</a>'
+        + '<button type="button" class="chip url-edit" title="Cambiar o quitar el enlace de coches.net">✎</button>'
+      : '<a class="chip" href="'+esc(cont.dataset.buscar)+'" target="_blank" rel="noopener" title="Buscar este coche para saber a cuánto venderlo">🔍 buscar</a>'
+        + '<button type="button" class="chip url-edit" title="Pegar el enlace de coches.net de este coche (queda guardado)">＋ enlace</button>';
+  }
+
+  function abrirPanelUrl(td){
+    var cont = td.querySelector('.enlaces-coche'), panel = td.querySelector('.url-inline');
+    var entrada = panel.querySelector('.url-input');
+    td.querySelector('.url-msg').textContent = '';
+    panel.hidden = false;
+    entrada.value = cont.dataset.url || '';
+    entrada.focus();
+    entrada.select();
+    // Si ya has copiado el enlace de coches.net, aparece escrito (si el navegador lo permite).
+    if(!entrada.value && navigator.clipboard && navigator.clipboard.readText){
+      navigator.clipboard.readText().then(function(t){
+        t = (t || '').trim();
+        if(!entrada.value && /^https?:\/\/(www\.)?coches\.net\//i.test(t)){ entrada.value = t; entrada.select(); }
+      }).catch(function(){});
+    }
+  }
+
+  function guardarUrl(td){
+    var cont = td.querySelector('.enlaces-coche'), panel = td.querySelector('.url-inline');
+    var msg = td.querySelector('.url-msg');
+    var valor = panel.querySelector('.url-input').value.trim();
+    var body = new URLSearchParams({campo: 'url_cochesnet', valor: valor});
+    msg.textContent = 'Guardando…';
+    fetch(urlCelda(cont.dataset.pk), {method:'POST', body: body, headers:{'X-CSRFToken': csrf}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j.error){ msg.textContent = j.error; return; }
+        cont.dataset.url = j.url_cochesnet || '';
+        pintarEnlaces(cont);
+        panel.hidden = true;
+        msg.textContent = '';
+      })
+      .catch(function(){ msg.textContent = 'No se pudo guardar. Inténtalo otra vez.'; });
+  }
+
+  document.addEventListener('click', function(e){
+    var td = e.target.closest ? e.target.closest('td.venta-cell') : null;
+    if(!td) return;
+    if(e.target.closest('.url-edit')) abrirPanelUrl(td);
+    else if(e.target.closest('.url-guardar')) guardarUrl(td);
+    else if(e.target.closest('.url-cancelar')){
+      td.querySelector('.url-inline').hidden = true;
+      td.querySelector('.url-msg').textContent = '';
+    }
+  });
+  document.addEventListener('keydown', function(e){
+    if(!e.target.classList || !e.target.classList.contains('url-input')) return;
+    var td = e.target.closest('td.venta-cell');
+    if(e.key === 'Enter'){ e.preventDefault(); guardarUrl(td); }
+    else if(e.key === 'Escape'){ td.querySelector('.url-inline').hidden = true; }
+  });
+  document.addEventListener('paste', function(e){
+    if(!e.target.classList || !e.target.classList.contains('url-input')) return;
+    var entrada = e.target, td = entrada.closest('td.venta-cell');
+    // Pegar un enlace lo guarda al momento, sin pulsar nada más.
+    setTimeout(function(){ if(/^https?:\/\//i.test(entrada.value.trim())) guardarUrl(td); }, 60);
   });
 
   document.querySelectorAll('.fav-toggle').forEach(function(btn){

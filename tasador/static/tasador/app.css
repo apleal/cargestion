@@ -113,7 +113,10 @@ button.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;pa
 .btn.peligro:hover{background:var(--warn-soft)}
 .btn:hover{border-color:var(--accent)}
 .acciones form{margin:0}
-.acciones-fila{display:flex;align-items:center;gap:6px}
+.acciones-fila{display:flex;align-items:center;gap:4px}
+.acciones-fila form{margin:0;display:inline-flex}
+.ico-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
+  font-size:.95rem;line-height:1;text-decoration:none;cursor:pointer}
 .fav-toggle{background:none;border:0;cursor:pointer;font-size:1.05rem;line-height:1;
   padding:2px;color:var(--ink-soft)}
 .fav-toggle.activo{color:var(--yellow)}
@@ -166,13 +169,18 @@ table.rejilla input.celda:hover,table.rejilla select.celda:hover{border-color:va
 table.rejilla input.celda:focus,table.rejilla select.celda:focus{border-color:var(--accent);background:var(--surface);outline:none}
 table.rejilla input.mini{min-width:52px;text-align:right}
 table.rejilla input.venta{text-align:right;font-weight:600}
-table.rejilla td.venta-cell{display:flex;align-items:center;gap:2px}
-table.rejilla td.venta-cell input.celda{flex:1}
-.buscar-comp{
-  flex:none;text-decoration:none;font-size:.9rem;padding:2px 4px;border-radius:5px;
-  opacity:.7;filter:grayscale(.3);
-}
-.buscar-comp:hover{opacity:1;filter:none;background:var(--surface-2)}
+table.rejilla td.venta-cell{vertical-align:top;min-width:112px}
+table.rejilla td.venta-cell input.celda{width:100%}
+.enlaces-coche{display:flex;justify-content:flex-end;gap:4px;margin-top:3px;flex-wrap:wrap}
+.chip{display:inline-block;font:inherit;font-size:.7rem;line-height:1.5;padding:0 8px;border:1px solid var(--line-strong);
+  border-radius:999px;background:var(--surface);color:var(--ink-soft);text-decoration:none;cursor:pointer;white-space:nowrap}
+.chip:hover{border-color:var(--accent);color:var(--accent-ink)}
+.chip-ok{border-color:var(--good);color:var(--good);background:var(--good-soft);font-weight:600}
+.url-inline{display:flex;gap:4px;margin-top:4px}
+.url-inline[hidden]{display:none}
+.url-inline .url-input{flex:1;min-width:150px;font-size:.78rem;padding:3px 6px}
+.url-msg{font-size:.68rem;color:var(--warn);text-align:left}
+.url-msg:empty{display:none}
 .buscar-comp-txt{
   font-size:.72rem;font-weight:400;text-decoration:none;color:var(--accent-ink);
   margin-left:8px;white-space:nowrap;

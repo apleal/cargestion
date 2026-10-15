@@ -94,7 +94,7 @@ def test_pegar_crea_lotes_en_sesion_y_rejilla(cliente):
     assert cols[:8] == ["", "Lote", "Coche", "Matrícula", "Km", "Puja 15%", "Puja 12%", "Puja 10%"]
     assert "Estado" not in cols
     # boton Costes, no enlace de texto
-    assert 'class="btn mini-btn"' in html
+    assert 'class="btn mini-btn ico-btn"' in html and 'aria-label="Costes"' in html
 
 
 def test_retasacion_auto1_detecta_bajada_de_precio(cliente):
@@ -667,3 +667,88 @@ def test_dos_anuncios_distintos_de_auto1_no_se_fusionan_aunque_se_parezcan(clien
     v2 = Valoracion.objects.get(lote_id="DN19999")
     assert v1.vehiculo_id != v2.vehiculo_id
     assert v2.valoracion_anterior is None
+
+
+# ------------------------------------------------------------ rejilla más compacta
+def _sesion_auto1_con_un_coche(cliente):
+    from tasador.models import Proveedor, SesionSubasta
+
+    auto1 = Proveedor.objects.get(nombre="Auto1")
+    s = SesionSubasta.objects.create(
+        proveedor=auto1, ubicacion=auto1.ubicaciones.first(), fecha="2026-10-15"
+    )
+    linea = "Seat Ibiza 1.0 TSI FR\t9000\t60,5\tWH27138\t2018\t51774\tGasolina\tManual"
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": linea})
+    return s
+
+
+def _cabecera(html):
+    import re
+
+    thead = re.search(r"<thead>(.*?)</thead>", html, re.S).group(1)
+    return [re.sub(r"<[^>]+>", "", c).strip() for c in re.findall(r"<th[^>]*>(.*?)</th>", thead, re.S)]
+
+
+def test_la_rejilla_ya_no_tiene_rentabilidad_ni_iva_anuncio(cliente):
+    s = _sesion_auto1_con_un_coche(cliente)
+    html = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    cols = _cabecera(html)
+    assert "Rent." not in cols and "IVA anuncio" not in cols
+    assert 'data-campo="iva_anuncio"' not in html
+    # el recálculo en vivo ya no toca una celda que no existe (rompería el script)
+    assert "'.rent'" not in html
+    # cabecera y fila tienen las mismas columnas
+    fila = html.split('<tr data-row="')[1].split("</tr>")[0]
+    assert fila.count("<td") == len(cols)
+
+
+def test_la_rejilla_de_bca_conserva_origen_y_transporte(cliente):
+    s = _sesion()
+    cliente.post(reverse("sesion_pegar", args=[s.pk]), {"texto": LINEA})
+    cols = _cabecera(cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode())
+    assert "Origen" in cols and any(c.startswith("Transp.") for c in cols)
+    assert "Rent." not in cols
+
+
+def test_costes_y_vendido_son_iconos_con_su_ayuda(cliente):
+    s = _sesion_auto1_con_un_coche(cliente)
+    html = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert 'aria-label="Costes"' in html and "🧮" in html
+    assert 'aria-label="Vendido"' in html and "🏷️" in html
+    assert 'title="Costes:' in html and 'title="Vendido:' in html
+    # ya no son botones de texto
+    assert ">Costes</a>" not in html and ">Vendido</button>" not in html
+
+
+def test_en_vendidos_el_boton_de_reabrir_es_un_icono(cliente):
+    from tasador.models import EstadoValoracion, Valoracion
+
+    s = _sesion_auto1_con_un_coche(cliente)
+    v = Valoracion.objects.get(lote_id="WH27138")
+    v.estado = EstadoValoracion.objects.get(nombre="Vendido")
+    v.save()
+    html = cliente.get(reverse("sesion_detalle", args=[s.pk]), {"vendidos": "1"}).content.decode()
+    assert 'aria-label="Reabrir"' in html and ">↩</button>" in html
+
+
+def test_enlace_de_cochesnet_sin_guardar_ofrece_buscar_y_pegar(cliente):
+    s = _sesion_auto1_con_un_coche(cliente)
+    html = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "🔍 buscar" in html and "＋ enlace" in html
+    assert "url-cochesnet" not in html.split("<tbody>")[1].split("</tbody>")[0]
+    # el panel para pegar el enlace está en la fila, oculto
+    assert 'class="url-inline" hidden' in html and "Pega aquí el enlace de coches.net" in html
+
+
+def test_enlace_de_cochesnet_guardado_ofrece_abrirlo_y_cambiarlo(cliente):
+    from tasador.models import Valoracion
+
+    s = _sesion_auto1_con_un_coche(cliente)
+    v = Valoracion.objects.get(lote_id="WH27138")
+    url = "https://www.coches.net/seat-ibiza-123.aspx"
+    v.vehiculo.url_cochesnet = url
+    v.vehiculo.save()
+    html = cliente.get(reverse("sesion_detalle", args=[s.pk])).content.decode()
+    assert "🔗 coches.net" in html and f'href="{url}"' in html
+    assert 'target="_blank"' in html and "✎" in html
+    assert "＋ enlace" not in html.split("<tbody>")[1].split("</tbody>")[0]
