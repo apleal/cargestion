@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load tasador_extras %}
-{% block title %}{% if valoracion %}Valoración{% else %}Nueva valoración{% endif %} · Tasador{% endblock %}
+{% block title %}{% if valoracion %}Valoración{% else %}Nueva valoración{% endif %} · {{ app_name }}{% endblock %}
 {% block content %}
 {% if valoracion.sesion_subasta %}
 <p class="mono"><a href="{% url 'sesion_detalle' valoracion.sesion_subasta.pk %}">← Volver a la subasta ({{ valoracion.sesion_subasta }})</a></p>

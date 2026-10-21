@@ -1,0 +1,19 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+/* Colores de la marca en el admin (solo en tema claro; el oscuro conserva el suyo). */
+:root:not([data-theme="dark"]) {
+  --primary: #00427f; --secondary: #00519e; --accent: #bcdcf7;
+  --header-color: #ffffff; --header-branding-color: #ffffff; --header-bg: #00519e;
+  --header-link-color: #ffffff;
+  --link-fg: #00519e; --link-hover-color: #00427f; --link-selected-fg: #00427f;
+  --button-bg: #00519e; --button-hover-bg: #00427f;
+  --default-button-bg: #00427f; --default-button-hover-bg: #00519e;
+  --object-tools-bg: #00519e; --object-tools-hover-bg: #00427f;
+  --breadcrumbs-bg: #00427f; --breadcrumbs-link-fg: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --header-bg: #1e2630; --header-branding-color: #8fc4f0; }
+}
+</style>
+{% endblock %}

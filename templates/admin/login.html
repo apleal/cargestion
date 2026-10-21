@@ -1,0 +1,7 @@
+{% extends "admin/login.html" %}
+{% block content %}
+{{ block.super }}
+<p style="text-align:center;margin-top:18px">
+  Zona de administración. ¿Buscas {{ app_name }}? <a href="{% url 'login' %}">Entra por aquí</a>.
+</p>
+{% endblock %}

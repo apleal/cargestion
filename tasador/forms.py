@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm
 from django.utils import timezone
 
 from . import models
@@ -97,3 +98,26 @@ class PegarLotesForm(forms.Form):
         }),
         label="Pegar del portapapeles",
     )
+
+
+class AccesoForm(AuthenticationForm):
+    """Formulario de acceso con textos claros y el comportamiento del navegador
+    bien configurado (autocompletado de usuario y contraseña)."""
+
+    error_messages = {
+        **AuthenticationForm.error_messages,
+        "invalid_login": "Usuario o contraseña incorrectos. Revisa mayúsculas y minúsculas.",
+        "inactive": "Esta cuenta está desactivada.",
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["username"].label = "Usuario"
+        self.fields["password"].label = "Contraseña"
+        self.fields["username"].widget.attrs.update(
+            {"autocomplete": "username", "autofocus": True, "placeholder": "Tu usuario",
+             "autocapitalize": "none", "spellcheck": "false"}
+        )
+        self.fields["password"].widget.attrs.update(
+            {"autocomplete": "current-password", "placeholder": "Tu contraseña"}
+        )

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load tasador_extras %}
-{% block title %}{{ vehiculo }} · Tasador{% endblock %}
+{% block title %}{{ vehiculo }} · {{ app_name }}{% endblock %}
 {% block content %}
 <div class="card mds-card">
   <form method="post" action="{% url 'vehiculo_actualizar_url' vehiculo.pk %}" class="mds-form url-form">

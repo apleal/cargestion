@@ -21,6 +21,13 @@ env_file = BASE_DIR / ".env"
 if env_file.exists():
     env.read_env(env_file)
 
+# Marca de la aplicación: aparece en el acceso, la cabecera, los títulos, el
+# admin y la documentación de la API. Cambiarla es una variable de entorno.
+APP_NAME = env("APP_NAME", default="PujaAuto")
+APP_TAGLINE = env(
+    "APP_TAGLINE", default="Tasa, puja y sigue los coches de subasta sin perder margen"
+)
+
 SECRET_KEY = env("SECRET_KEY", default="dev-inseguro-cambiar-en-produccion")
 DEBUG = env("DEBUG")
 
@@ -83,6 +90,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "tasador.context.marca",
             ],
         },
     },
@@ -140,7 +148,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 }
 SPECTACULAR_SETTINGS = {
-    "TITLE": "API · Tasador de vehículos",
+    "TITLE": f"API · {APP_NAME}",
     "DESCRIPTION": "Cálculo de puja máxima e importación de valoraciones.",
     "VERSION": "0.1.0",
 }

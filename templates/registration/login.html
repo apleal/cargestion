@@ -1,12 +1,62 @@
-{% extends "base.html" %}
-{% block title %}Acceso · Tasador{% endblock %}
+{% extends "base_auth.html" %}
+{% block title %}Acceso · {{ app_name }}{% endblock %}
 {% block content %}
-<div class="login-box">
-  <h1>Acceso</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit" class="primary">Entrar</button>
-  </form>
-</div>
+<main class="auth">
+  <section class="auth-marca" aria-label="{{ app_name }}">
+    <div class="auth-logo" aria-hidden="true">{{ app_name|slice:":1" }}</div>
+    <h1 class="auth-nombre">{{ app_name }}</h1>
+    <p class="auth-lema">{{ app_tagline }}</p>
+    <ul class="auth-lista">
+      <li><b>Puja máxima de un vistazo</b> al 15, 12 y 10&nbsp;% de rentabilidad.</li>
+      <li><b>REBU, comisiones y costes</b> de preparación calculados por ti, sin Excel.</li>
+      <li><b>Seguimiento diario de Auto1</b> con aviso cuando un coche entra en precio.</li>
+    </ul>
+  </section>
+
+  <section class="auth-form" aria-label="Acceso">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <h2>Entrar</h2>
+      <p class="auth-ayuda">Acceso privado. Usa tu usuario y contraseña.</p>
+
+      {% if form.non_field_errors %}
+      <div class="auth-error" role="alert">{{ form.non_field_errors.0 }}</div>
+      {% endif %}
+
+      <div class="auth-campo">
+        <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+        {{ form.username }}
+      </div>
+      <div class="auth-campo">
+        <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+        <div class="auth-clave">
+          {{ form.password }}
+          <button type="button" id="ver-clave" aria-label="Mostrar la contraseña" aria-pressed="false">Ver</button>
+        </div>
+      </div>
+
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button type="submit" class="auth-entrar">Entrar</button>
+    </form>
+    <p class="auth-pie">© {% now "Y" %} {{ app_name }}</p>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var boton = document.getElementById('ver-clave');
+  var campo = document.querySelector('.auth-clave input');
+  if(!boton || !campo) return;
+  boton.addEventListener('click', function(){
+    var visible = campo.type === 'text';
+    campo.type = visible ? 'password' : 'text';
+    boton.textContent = visible ? 'Ver' : 'Ocultar';
+    boton.setAttribute('aria-pressed', visible ? 'false' : 'true');
+    boton.setAttribute('aria-label', visible ? 'Mostrar la contraseña' : 'Ocultar la contraseña');
+    campo.focus();
+  });
+})();
+</script>
 {% endblock %}
