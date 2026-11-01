@@ -110,3 +110,9 @@ class ValoracionAdmin(SimpleHistoryAdmin):
 class PasadaAuto1Admin(admin.ModelAdmin):
     list_display = ("fecha", "ok", "revisados", "con_cambios", "sin_cambios", "sin_precio", "errores")
     list_filter = ("ok",)
+
+
+@admin.register(models.BusquedaOportunidad)
+class BusquedaOportunidadAdmin(admin.ModelAdmin):
+    list_display = ("marca", "modelo", "version", "anio", "km_referencia", "precio_venta_estimado", "activa")
+    list_filter = ("activa", "pais")

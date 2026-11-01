@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if busqueda %}Editar búsqueda{% else %}Nueva búsqueda{% endif %} · {{ app_name }}{% endblock %}
+{% block content %}
+<p class="mono"><a href="{% url 'oportunidades_lista' %}">← Oportunidades de Auto1</a></p>
+<h1>{% if busqueda %}{{ busqueda.nombre }}{% else %}Nueva búsqueda{% endif %}</h1>
+{% if busqueda %}
+<p class="mono ayuda">Referencia: {{ busqueda.anio|default_if_none:"—" }} · {{ busqueda.km_referencia }} km (se buscan coches con {{ busqueda.rango_km.0 }}–{{ busqueda.rango_km.1 }} km){% if busqueda.referencia_origen %} · creada con {{ busqueda.referencia_origen }}{% endif %}</p>
+{% endif %}
+
+<form method="post" class="card" style="max-width:760px">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="aviso">{{ form.non_field_errors }}</div>{% endif %}
+
+  <p>
+    <label for="{{ form.linea_plugin.id_for_label }}">{{ form.linea_plugin.label }}{% if busqueda %} <span class="mono ayuda">(opcional: pega otra para cambiar el coche de referencia)</span>{% endif %}</label>
+    {{ form.linea_plugin }}
+    {% if form.linea_plugin.errors %}<span class="neg">{{ form.linea_plugin.errors.0 }}</span>{% endif %}
+    <span class="mono ayuda">{{ form.linea_plugin.help_text }}</span>
+  </p>
+  <p>
+    <label for="{{ form.url_listado.id_for_label }}">{{ form.url_listado.label }}</label>
+    {{ form.url_listado }}
+    {% if form.url_listado.errors %}<span class="neg">{{ form.url_listado.errors.0 }}</span>{% endif %}
+    <span class="mono ayuda">{{ form.url_listado.help_text }}</span>
+  </p>
+
+  <div class="costs-grid">
+    <p>
+      <label for="{{ form.precio_venta_estimado.id_for_label }}">Precio de venta estimado (€)</label>
+      {{ form.precio_venta_estimado }}
+      {% if form.precio_venta_estimado.errors %}<span class="neg">{{ form.precio_venta_estimado.errors.0 }}</span>{% endif %}
+    </p>
+    <p>
+      <label for="{{ form.tolerancia_km.id_for_label }}">Tolerancia de km (±)</label>
+      {{ form.tolerancia_km }}
+      {% if form.tolerancia_km.errors %}<span class="neg">{{ form.tolerancia_km.errors.0 }}</span>{% endif %}
+    </p>
+    <p>
+      <label for="{{ form.estado_carroceria.id_for_label }}">Estado de la carrocería</label>
+      {{ form.estado_carroceria }}
+    </p>
+    <p>
+      <label for="{{ form.palabras_titulo.id_for_label }}">{{ form.palabras_titulo.label|capfirst }}</label>
+      {{ form.palabras_titulo }}
+    </p>
+  </div>
+  <p class="mono ayuda">{{ form.tolerancia_km.help_text }} {{ form.palabras_titulo.help_text }}</p>
+
+  {% if busqueda %}
+  <details class="card" style="margin-top:14px">
+    <summary><b>Coche de referencia</b> <span class="mono ayuda">(se rellena solo desde la línea del plugin; corrígelo si hace falta)</span></summary>
+    <div class="costs-grid" style="margin-top:10px">
+      {% for campo in form.visible_fields %}{% if campo.name == "marca" or campo.name == "modelo" or campo.name == "version" or campo.name == "anio" or campo.name == "km_referencia" or campo.name == "combustible" or campo.name == "cambio" %}
+      <p><label for="{{ campo.id_for_label }}">{{ campo.label|capfirst }}</label>{{ campo }}{% if campo.errors %}<span class="neg">{{ campo.errors.0 }}</span>{% endif %}</p>
+      {% endif %}{% endfor %}
+    </div>
+  </details>
+
+  <details class="card" style="margin-top:14px">
+    <summary><b>Costes de preparación</b> <span class="mono ayuda">(los de siempre; solo cámbialos para esta búsqueda)</span></summary>
+    <div class="costs-grid" style="margin-top:10px">
+      <p><label for="{{ form.piezas_pintura.id_for_label }}">Piezas de pintura</label>{{ form.piezas_pintura }}</p>
+      {% for campo in form.visible_fields %}{% if campo.name|slice:":6" == "coste_" %}
+      <p><label for="{{ campo.id_for_label }}">{{ campo.label|capfirst }}</label>{{ campo }}{% if campo.errors %}<span class="neg">{{ campo.errors.0 }}</span>{% endif %}</p>
+      {% endif %}{% endfor %}
+    </div>
+  </details>
+
+  <p style="margin-top:14px"><label style="display:flex;gap:8px;align-items:center"><span style="width:auto">{{ form.activa }}</span> Búsqueda activa</label></p>
+  {% endif %}
+
+  <button type="submit" class="primary">{% if busqueda %}Guardar cambios{% else %}Crear búsqueda{% endif %}</button>
+</form>
+{% endblock %}

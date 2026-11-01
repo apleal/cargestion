@@ -278,3 +278,5 @@ table.rejilla.sala td{padding:9px 12px}
   .auth-lema{margin-bottom:0}
   .auth-form{padding:22px 16px 30px}
 }
+
+.aviso-fase{background:var(--accent-soft);border-color:var(--accent);font-size:.9rem}

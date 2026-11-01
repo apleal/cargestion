@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Oportunidades de Auto1 · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="sesion-head">
+  <div>
+    <h1>Oportunidades de Auto1</h1>
+    <p class="mono ayuda">Dices qué coche buscas y a cuánto lo vendes; el servicio mirará cada mañana los listados de Auto1 y te avisará de los que se puedan comprar con un 10&nbsp;% o más de rentabilidad.</p>
+  </div>
+  <a class="btn primary" href="{% url 'busqueda_nueva' %}">＋ Nueva búsqueda</a>
+</div>
+
+<div class="card aviso-fase">
+  <b>En preparación.</b> Ya puedes crear y ajustar tus búsquedas. El escaneo diario de los listados (07:00), la lista de oportunidades encontradas y el aviso por Telegram se activan en las siguientes fases.
+</div>
+
+<div class="card">
+  <h2>Búsquedas ({{ busquedas|length }}{% if busquedas %} · {{ n_activas }} activa{{ n_activas|pluralize }}{% endif %})</h2>
+  {% if busquedas %}
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Coche</th><th>País</th><th class="num">Año</th><th class="num">Km de referencia</th>
+      <th class="num">Venta</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for b in busquedas %}
+      <tr {% if not b.activa %}style="opacity:.6"{% endif %}>
+        <td>
+          <a href="{% url 'busqueda_editar' b.pk %}"><b>{{ b.marca }} {{ b.modelo }}</b></a>
+          <span class="ver">{{ b.version }}{% if b.palabras_titulo %} · título con «{{ b.palabras_titulo }}»{% endif %}</span>
+        </td>
+        <td>{{ b.get_pais_display }}</td>
+        <td class="num">{{ b.anio|default_if_none:"—" }}</td>
+        <td class="num">{{ b.km_referencia|miles }} <span class="mono ayuda">± {{ b.tolerancia_km|miles }}</span></td>
+        <td class="num">{{ b.precio_venta_estimado|eur }}</td>
+        <td>{% if b.activa %}<span class="pill ok">Activa</span>{% else %}<span class="pill no">Pausada</span>{% endif %}</td>
+        <td class="acciones-fila">
+          <a class="btn mini-btn" href="{% url 'busqueda_editar' b.pk %}">Editar</a>
+          <form method="post" action="{% url 'busqueda_alternar' b.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn mini-btn" title="{% if b.activa %}Pausar: no se buscará hasta que la actives{% else %}Activar la búsqueda{% endif %}">{% if b.activa %}⏸ Pausar{% else %}▶ Activar{% endif %}</button>
+          </form>
+          <form method="post" action="{% url 'busqueda_eliminar' b.pk %}"
+                onsubmit="return confirm('¿Eliminar la búsqueda «{{ b.nombre|escapejs }}»?');">
+            {% csrf_token %}
+            <button type="submit" class="btn mini-btn peligro" title="Eliminar la búsqueda">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="mono">Aún no tienes ninguna búsqueda. <a href="{% url 'busqueda_nueva' %}">Crea la primera</a>: necesitas la línea del plugin de un coche de referencia, la dirección del listado de Auto1 y tu precio de venta.</p>
+  {% endif %}
+</div>
+{% endblock %}

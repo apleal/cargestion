@@ -1,9 +1,14 @@
 from django.urls import path
 
-from . import views
+from . import views, views_oportunidades as oportunidades
 
 urlpatterns = [
     path("", views.panel, name="panel"),
+    path("oportunidades/", oportunidades.oportunidades_lista, name="oportunidades_lista"),
+    path("oportunidades/nueva/", oportunidades.busqueda_nueva, name="busqueda_nueva"),
+    path("oportunidades/<int:pk>/", oportunidades.busqueda_editar, name="busqueda_editar"),
+    path("oportunidades/<int:pk>/activar/", oportunidades.busqueda_alternar, name="busqueda_alternar"),
+    path("oportunidades/<int:pk>/eliminar/", oportunidades.busqueda_eliminar, name="busqueda_eliminar"),
     path("seguimiento-auto1/solicitar/", views.seguimiento_auto1_solicitar, name="seguimiento_auto1_solicitar"),
     path("seguimiento/", views.seguimiento_auto1, name="seguimiento_auto1"),
     path("seguimiento/accion/", views.seguimiento_auto1_accion, name="seguimiento_auto1_accion"),

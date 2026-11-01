@@ -638,3 +638,94 @@ class EventoAuto1(models.Model):
 
     def __str__(self) -> str:
         return f"{self.fecha:%d/%m %H:%M:%S} {self.texto[:60]}"
+
+
+class BusquedaOportunidad(models.Model):
+    """Búsqueda guardada de oportunidades en Auto1.
+
+    Se define con un coche de referencia (la línea del plugin: marca, modelo,
+    versión, año, km), la URL del listado de Auto1 donde buscar y el precio al
+    que se espera vender. El servicio recorre el listado y, con los costes de
+    siempre, detecta los coches que se pueden comprar a un 10 % o más de
+    rentabilidad. Solo se consideran los de km parecidos al de referencia.
+    """
+
+    class Pais(models.TextChoices):
+        ESPANA = "ES", "España"
+
+    marca = models.CharField(max_length=40)
+    modelo = models.CharField(max_length=80)
+    version = models.CharField(max_length=120, blank=True)
+    anio = models.PositiveSmallIntegerField("año", null=True, blank=True)
+    km_referencia = models.PositiveIntegerField("km del coche de referencia")
+    combustible = models.CharField(max_length=12, choices=Combustible.choices, blank=True)
+    cambio = models.CharField(max_length=12, choices=Cambio.choices, blank=True)
+    referencia_origen = models.CharField(
+        max_length=20, blank=True, help_text="Referencia Auto1 del coche con el que se creó."
+    )
+
+    pais = models.CharField(max_length=2, choices=Pais.choices, default=Pais.ESPANA)
+    url_listado = models.URLField(
+        "URL del listado de Auto1", max_length=1000,
+        help_text="La búsqueda de Auto1 con tus filtros; el servicio recorre todas sus páginas.",
+    )
+    palabras_titulo = models.CharField(
+        "palabras del título", max_length=200, blank=True,
+        help_text="Opcional: palabras que debe llevar el título del coche (p. ej. «1.0 TSI FR»).",
+    )
+    tolerancia_km = models.PositiveIntegerField(
+        "tolerancia de km", default=10000,
+        help_text="Solo cuentan coches con km entre referencia − tolerancia y referencia + tolerancia.",
+    )
+
+    precio_venta_estimado = models.DecimalField(**DEC)
+    estado_carroceria = models.ForeignKey(
+        EstadoCarroceria, on_delete=models.PROTECT, null=True, blank=True
+    )
+    piezas_pintura = models.PositiveSmallIntegerField(default=4)
+    coste_alberto = models.DecimalField(**DEC, default=Decimal("50"))
+    coste_gasolina = models.DecimalField(**DEC, default=Decimal("40"))
+    coste_pintura_por_pieza = models.DecimalField(**DEC, default=Decimal("87"))
+    coste_garantia = models.DecimalField(**DEC, default=Decimal("225"))
+    coste_mecanica = models.DecimalField(**DEC, default=Decimal("200"))
+    coste_cambio_titularidad = models.DecimalField(**DEC, default=Decimal("72"))
+    coste_transporte = models.DecimalField(**DEC, default=Decimal("350"))
+    coste_itv = models.DecimalField(**DEC, default=Decimal("0"))
+    coste_tapiceria = models.DecimalField(**DEC, default=Decimal("0"))
+    coste_tintado = models.DecimalField(**DEC, default=Decimal("0"))
+    coste_otros = models.DecimalField(**DEC, default=Decimal("0"))
+
+    activa = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "búsqueda de oportunidades"
+        verbose_name_plural = "búsquedas de oportunidades"
+        ordering = ["-activa", "marca", "modelo", "version"]
+
+    def __str__(self) -> str:
+        return self.nombre
+
+    @property
+    def nombre(self) -> str:
+        return " ".join(x for x in (self.marca, self.modelo, self.version) if x)
+
+    @property
+    def rango_km(self) -> tuple[int, int]:
+        return max(0, self.km_referencia - self.tolerancia_km), self.km_referencia + self.tolerancia_km
+
+    def aplicar_costes_por_defecto(self) -> None:
+        """Costes de preparación «de siempre» (los parámetros vigentes)."""
+        p = ParametrosCoste.vigentes()
+        self.coste_alberto = p.comision_alberto
+        self.coste_gasolina = p.gasolina
+        self.coste_pintura_por_pieza = p.pintura_por_pieza
+        self.coste_garantia = p.garantia
+        self.coste_mecanica = p.mecanica
+        self.coste_cambio_titularidad = p.cambio_titularidad
+        self.coste_transporte = p.transporte
+        self.coste_itv = p.itv
+        self.coste_tapiceria = p.tapiceria
+        self.coste_tintado = p.tintado
+        self.coste_otros = Decimal("0")

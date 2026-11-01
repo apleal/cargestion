@@ -1,8 +1,12 @@
+from decimal import Decimal  # noqa: F401
+from urllib.parse import urlparse
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.utils import timezone
 
 from . import models
+from .parser import parsear_linea_auto1
 
 
 class VehiculoForm(forms.ModelForm):
@@ -121,3 +125,106 @@ class AccesoForm(AuthenticationForm):
         self.fields["password"].widget.attrs.update(
             {"autocomplete": "current-password", "placeholder": "Tu contraseña"}
         )
+
+
+class BusquedaOportunidadForm(forms.ModelForm):
+    """Crear/editar una búsqueda de oportunidades. Al crear, el coche de
+    referencia sale de pegar la línea del plugin; al editar se puede corregir a
+    mano o pegar otra línea para cambiarlo."""
+
+    linea_plugin = forms.CharField(
+        label="Línea del plugin del coche de referencia",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "Pega aquí la línea que copia el plugin desde la ficha del coche"}),
+        help_text="Es la misma línea que pegas al tasar un coche de Auto1. Se leen marca, modelo, versión, año y km.",
+    )
+
+    CAMPOS_REFERENCIA = ("marca", "modelo", "version", "anio", "km_referencia", "combustible", "cambio")
+
+    class Meta:
+        model = models.BusquedaOportunidad
+        fields = [
+            "url_listado", "precio_venta_estimado", "tolerancia_km", "palabras_titulo",
+            "estado_carroceria", "piezas_pintura",
+            "marca", "modelo", "version", "anio", "km_referencia", "combustible", "cambio",
+            "coste_alberto", "coste_gasolina", "coste_pintura_por_pieza", "coste_garantia",
+            "coste_mecanica", "coste_cambio_titularidad", "coste_transporte", "coste_itv",
+            "coste_tapiceria", "coste_tintado", "coste_otros", "activa",
+        ]
+        widgets = {"url_listado": forms.URLInput(attrs={"placeholder": "https://www.auto1.com/es/app/merchant/cars?…"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.creando = self.instance.pk is None
+        if self.creando:
+            # el coche de referencia sale de la línea; los costes, de los parámetros
+            ocultos = (*self.CAMPOS_REFERENCIA, "piezas_pintura", "activa") + tuple(
+                f for f in self.fields if f.startswith("coste_")
+            )
+            for campo in ocultos:
+                self.fields.pop(campo, None)
+            self.fields["linea_plugin"].required = True
+            normal = models.EstadoCarroceria.objects.filter(nombre="Estado normal").first()
+            if normal:
+                self.fields["estado_carroceria"].initial = normal.pk
+
+    def clean_url_listado(self):
+        url = self.cleaned_data["url_listado"].strip()
+        partes = urlparse(url)
+        host = (partes.hostname or "").lower()
+        if partes.scheme != "https" or not (host == "auto1.com" or host.endswith(".auto1.com")):
+            raise forms.ValidationError("Debe ser un enlace de Auto1 (https://www.auto1.com/…).")
+        if "/merchant/cars" not in partes.path:
+            raise forms.ValidationError(
+                "Eso no es un listado de coches de Auto1. Copia la dirección de la página de resultados "
+                "(la que contiene /merchant/cars)."
+            )
+        return url
+
+    def clean_precio_venta_estimado(self):
+        precio = self.cleaned_data["precio_venta_estimado"]
+        if precio <= 0:
+            raise forms.ValidationError("El precio de venta debe ser mayor que 0.")
+        return precio
+
+    def _aplicar(self, campo, valor):
+        if campo in self.fields:
+            self.cleaned_data[campo] = valor
+        else:
+            setattr(self.instance, campo, valor)
+
+    def clean(self):
+        datos = super().clean()
+        linea = (datos.get("linea_plugin") or "").strip()
+        if not linea:
+            return datos
+        primera = next((l for l in linea.splitlines() if l.strip()), "")
+        lote = parsear_linea_auto1(primera)
+        if primera.count("\t") < 5 or not (lote.marca and lote.modelo and lote.anio and lote.kilometros):
+            self.add_error(
+                "linea_plugin",
+                "No reconozco la línea. Pégala tal cual la copia el plugin de Chrome desde la ficha "
+                "del coche (campos separados por tabulador: nombre, precio, tarifa, referencia, año, km…).",
+            )
+            return datos
+        valores = {
+            "marca": lote.marca, "modelo": lote.modelo, "version": lote.version,
+            "anio": lote.anio, "km_referencia": lote.kilometros,
+            "combustible": lote.combustible or "", "cambio": lote.cambio or "",
+        }
+        for campo, valor in valores.items():
+            self._aplicar(campo, valor)
+        self.instance.referencia_origen = lote.referencia or ""
+        return datos
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        if self.creando:
+            obj.aplicar_costes_por_defecto()
+            obj.piezas_pintura = obj.estado_carroceria.piezas_estimadas if obj.estado_carroceria else 4
+        elif "estado_carroceria" in self.changed_data and "piezas_pintura" not in self.changed_data:
+            if obj.estado_carroceria:
+                obj.piezas_pintura = obj.estado_carroceria.piezas_estimadas
+        if commit:
+            obj.save()
+        return obj
