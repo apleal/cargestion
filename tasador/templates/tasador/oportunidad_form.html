@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tasador_extras %}
 {% block title %}{% if busqueda %}Editar búsqueda{% else %}Nueva búsqueda{% endif %} · {{ app_name }}{% endblock %}
 {% block content %}
 <p class="mono"><a href="{% url 'oportunidades_lista' %}">← Oportunidades de Auto1</a></p>
@@ -81,4 +82,52 @@
 
   <button type="submit" class="primary">{% if busqueda %}Guardar cambios{% else %}Crear búsqueda{% endif %}</button>
 </form>
+
+{% if busqueda %}
+<div class="card" style="max-width:760px;margin-top:18px" id="tasador">
+  <h2>🧮 Tasador de mercado <span class="mono ayuda">sugiere el precio de venta con anuncios reales</span></h2>
+  <p class="mono ayuda">Busca en coches.net coches como el tuyo, copia los anuncios con el marcador y pégalos aquí. El agente quita los que no son comparables, calcula el precio típico a los km de tu coche y cuánto baja por cada 1.000 km. <b>Solo sugiere</b>: no cambia nada hasta que pulses «Aplicar».</p>
+
+  <details>
+    <summary><b>1 · Instala el marcador (una sola vez)</b></summary>
+    <ol class="mono ayuda" style="line-height:1.6">
+      <li>Muestra la barra de marcadores de tu navegador (Ctrl+Mayús+B).</li>
+      <li>Arrastra este botón a la barra: <a class="btn mini-btn primary" href="javascript:{{ snippet_js|urlencode }}" onclick="alert('Arrástralo a la barra de marcadores; no se pulsa aquí.');return false;">📋 Copiar anuncios de coches.net</a></li>
+      <li>Si no puedes arrastrarlo: crea un marcador nuevo y pega el código de abajo como dirección, con «javascript:» delante.</li>
+    </ol>
+    <textarea readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_js }}</textarea>
+  </details>
+
+  <p class="mono ayuda"><b>2 ·</b> En coches.net filtra como tu coche (marca, modelo, combustible, año, km) y, en la página de resultados, pulsa el marcador. Espera a que baje sola y avise de «N anuncios copiados». Repite en la página 2 y 3 si quieres más (30 por página).</p>
+
+  <form method="post" action="{% url 'busqueda_tasar' busqueda.pk %}">
+    {% csrf_token %}
+    <p><b>3 ·</b> Pega aquí lo copiado (puedes pegar varias páginas seguidas):</p>
+    <textarea name="anuncios" rows="4" style="width:100%" placeholder='{"origen":"coches.net","url":"…","anuncios":[…]}' required></textarea>
+    <div class="costs-grid" style="margin-top:8px">
+      <p><label>Descuento de negociación (%)</label><input type="text" name="descuento" value="{{ descuento_defecto }}" inputmode="decimal"><span class="mono ayuda">Lo que se suele rebajar sobre el precio de anuncio.</span></p>
+      <p><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="usar_ia" {% if ia_disponible %}checked{% else %}disabled{% endif %} style="width:auto"> Revisar con IA que sean comparables</label>
+      {% if not ia_disponible %}<span class="mono ayuda">Sin IA: falta <code>ANTHROPIC_API_KEY</code> en el servidor de la web. Se usa solo la estadística.</span>{% endif %}</p>
+    </div>
+    <button type="submit" class="primary">Analizar</button>
+  </form>
+
+  {% if busqueda.depreciacion_1000km %}
+  <p class="mono ayuda" style="margin-top:10px">✔ Precio aplicado: <b>{{ busqueda.precio_venta_estimado|eur }}</b> a {{ busqueda.km_base_venta|default:busqueda.km_referencia|miles }} km, con un ajuste de <b>{{ busqueda.depreciacion_1000km|floatformat:0 }} € por cada 1.000 km</b> (cada coche se calcula con sus km).</p>
+  {% endif %}
+
+  {% if tasaciones %}
+  <h3 style="margin-top:14px">Últimas tasaciones</h3>
+  <table><tbody>
+    {% for t in tasaciones %}
+    <tr>
+      <td><a href="{% url 'tasacion_detalle' t.pk %}">{{ t.creada|date:"d/m/Y H:i" }}</a></td>
+      <td>{% if t.valida %}<b>{{ t.precio_sugerido|eur }}</b> sugerido · {{ t.n_usados }} anuncios{% else %}<span class="neg">sin resultado</span>{% endif %}</td>
+      <td>{% if t.aplicada %}<span class="pill ok">aplicada</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody></table>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

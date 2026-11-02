@@ -692,6 +692,15 @@ class BusquedaOportunidad(models.Model):
     )
 
     precio_venta_estimado = models.DecimalField(**DEC)
+    depreciacion_1000km = models.DecimalField(
+        "ajuste por cada 1.000 km", **DEC, default=Decimal("0"),
+        help_text="Euros que baja el precio de venta por cada 1.000 km más que el coche de "
+        "referencia (y sube por cada 1.000 de menos). 0 = el mismo precio para todos.",
+    )
+    km_base_venta = models.PositiveIntegerField(
+        "km a los que vale ese precio", null=True, blank=True,
+        help_text="Los km del coche al que corresponde el precio de venta. Vacío = los del coche de referencia.",
+    )
     estado_carroceria = models.ForeignKey(
         EstadoCarroceria, on_delete=models.PROTECT, null=True, blank=True
     )
@@ -808,6 +817,10 @@ class Oportunidad(models.Model):
     cambio = models.CharField(max_length=12, blank=True)
     ubicacion = models.CharField(max_length=80, blank=True)
 
+    precio_venta = models.DecimalField(
+        **DEC, null=True, blank=True,
+        help_text="Precio de venta estimado usado para este coche (ajustado por sus km).",
+    )
     evaluada = models.BooleanField(
         default=False, help_text="Se ha abierto la ficha y calculado con el IVA real."
     )
@@ -844,3 +857,67 @@ class Oportunidad(models.Model):
     @property
     def comprable(self) -> bool:
         return bool(self.tier)
+
+
+class TasacionMercado(models.Model):
+    """Una tasación de mercado de una búsqueda: precio de venta sugerido a partir de
+    anuncios comparables de coches.net (que pega la persona desde su navegador).
+
+    Solo SUGIERE: no cambia nada hasta que se pulsa «Aplicar»."""
+
+    busqueda = models.ForeignKey(
+        BusquedaOportunidad, on_delete=models.CASCADE, related_name="tasaciones"
+    )
+    creada = models.DateTimeField(default=timezone.now)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    n_pegados = models.PositiveIntegerField(default=0)
+    n_comparables = models.PositiveIntegerField(default=0, help_text="Tras los filtros de la búsqueda.")
+    n_usados = models.PositiveIntegerField(default=0, help_text="Tras la revisión de la IA.")
+    km_referencia = models.PositiveIntegerField(default=0)
+
+    precio_mercado = models.DecimalField(**DEC, null=True, blank=True, help_text="Precio de anuncio típico a los km de referencia.")
+    rango_bajo = models.DecimalField(**DEC, null=True, blank=True)
+    rango_alto = models.DecimalField(**DEC, null=True, blank=True)
+    descuento_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("5"))
+    precio_sugerido = models.DecimalField(**DEC, null=True, blank=True)
+    depreciacion_1000km = models.DecimalField(**DEC, default=Decimal("0"))
+    pendiente_propia = models.BooleanField(
+        default=False, help_text="La bajada por km sale de los anuncios (si no, es una estimación general)."
+    )
+
+    ia_usada = models.BooleanField(default=False)
+    ia_modelo = models.CharField(max_length=60, blank=True)
+    ia_confianza = models.CharField(max_length=10, blank=True)
+    ia_resumen = models.TextField(blank=True)
+    ia_error = models.TextField(blank=True)
+    tokens_entrada = models.PositiveIntegerField(default=0)
+    tokens_salida = models.PositiveIntegerField(default=0)
+
+    anuncios = models.JSONField(default=list, blank=True)
+    excluidos = models.JSONField(default=list, blank=True)
+    error = models.TextField(blank=True)
+    aplicada = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-creada", "-id"]
+        verbose_name = "tasación de mercado"
+        verbose_name_plural = "tasaciones de mercado"
+
+    def __str__(self) -> str:
+        return f"{self.busqueda} · {self.creada:%d/%m %H:%M}"
+
+    @property
+    def valida(self) -> bool:
+        return not self.error and self.precio_sugerido is not None
+
+    def aplicar(self) -> None:
+        """Pasa el precio sugerido (y la bajada por km) a la búsqueda."""
+        b = self.busqueda
+        b.precio_venta_estimado = self.precio_sugerido
+        b.depreciacion_1000km = self.depreciacion_1000km
+        b.km_base_venta = self.km_referencia or b.km_referencia
+        b.save(update_fields=["precio_venta_estimado", "depreciacion_1000km", "km_base_venta", "updated_at"])
+        self.aplicada = timezone.now()
+        self.save(update_fields=["aplicada"])

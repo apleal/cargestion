@@ -17,7 +17,7 @@
   <h2>En el listado ahora ({{ vigentes|length }})</h2>
   <div class="tw"><table>
     <thead><tr>
-      <th>Coche</th><th>Tipo</th><th class="num">Precio</th><th>Veredicto</th><th class="num">Tope 10&nbsp;%</th>
+      <th>Coche</th><th>Tipo</th><th class="num">Precio</th><th>Veredicto</th><th class="num">Tope 10&nbsp;%</th><th class="num">Venta est.</th>
       <th class="num">Km</th><th class="num">Año</th><th class="num">CV</th><th></th>
     </tr></thead>
     <tbody>
@@ -33,6 +33,7 @@
           {% else %}<span class="ayuda">demasiado caro, no se revisa</span>{% endif %}
         </td>
         <td class="num">{{ o.puja_maxima_10|eur }}</td>
+        <td class="num">{{ o.precio_venta|eur }}</td>
         <td class="num">{{ o.km|miles }}</td>
         <td class="num">{{ o.anio|default_if_none:"—" }}</td>
         <td class="num">{{ o.cv|default_if_none:"—" }}</td>

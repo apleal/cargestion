@@ -7,3 +7,4 @@ psycopg[binary]>=3.2
 gunicorn>=23
 whitenoise>=6.7
 openpyxl>=3.1
+anthropic>=2.0

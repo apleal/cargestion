@@ -12,7 +12,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from . import models
+from decimal import Decimal, InvalidOperation
+
+from . import models, tasacion_mercado
 from .forms import BusquedaOportunidadForm
 from .views import _estado_servicio_auto1
 
@@ -102,7 +104,18 @@ def busqueda_editar(request, pk):
         form.save()
         messages.success(request, "Búsqueda guardada.")
         return redirect("oportunidades_lista")
-    return render(request, "tasador/oportunidad_form.html", {"form": form, "busqueda": busqueda})
+    return render(
+        request,
+        "tasador/oportunidad_form.html",
+        {
+            "form": form,
+            "busqueda": busqueda,
+            "snippet_js": tasacion_mercado.SNIPPET_JS,
+            "ia_disponible": tasacion_mercado.clave_disponible(),
+            "tasaciones": list(busqueda.tasaciones.all()[:5]),
+            "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
+        },
+    )
 
 
 @login_required
@@ -123,3 +136,47 @@ def busqueda_eliminar(request, pk):
     b.delete()
     messages.success(request, f"Búsqueda «{nombre}» eliminada.")
     return redirect("oportunidades_lista")
+
+
+@login_required
+@require_POST
+def busqueda_tasar(request, pk):
+    """Tasa la búsqueda con los anuncios de coches.net que se han pegado."""
+    b = get_object_or_404(models.BusquedaOportunidad, pk=pk)
+    try:
+        descuento = Decimal(request.POST.get("descuento", "").replace(",", ".") or tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO)
+        if not (Decimal("0") <= descuento <= Decimal("30")):
+            raise InvalidOperation
+    except InvalidOperation:
+        messages.error(request, "El descuento de negociación debe ser un número entre 0 y 30.")
+        return redirect("busqueda_editar", pk=b.pk)
+    usar_ia = request.POST.get("usar_ia") == "on" and tasacion_mercado.clave_disponible()
+    t = tasacion_mercado.tasar(
+        b, request.POST.get("anuncios", ""), descuento_pct=descuento, usuario=request.user, usar_ia=usar_ia
+    )
+    return redirect("tasacion_detalle", pk=t.pk)
+
+
+@login_required
+def tasacion_detalle(request, pk):
+    t = get_object_or_404(models.TasacionMercado.objects.select_related("busqueda"), pk=pk)
+    return render(
+        request, "tasador/tasacion_detalle.html",
+        {"t": t, "b": t.busqueda, "ia_disponible": tasacion_mercado.clave_disponible()},
+    )
+
+
+@login_required
+@require_POST
+def tasacion_aplicar(request, pk):
+    t = get_object_or_404(models.TasacionMercado.objects.select_related("busqueda"), pk=pk)
+    if not t.valida:
+        messages.error(request, "Esa tasación no tiene un precio que aplicar.")
+        return redirect("tasacion_detalle", pk=t.pk)
+    t.aplicar()
+    messages.success(
+        request,
+        f"Aplicado: la búsqueda «{t.busqueda.nombre}» vende ahora a {t.precio_sugerido:,.0f} € "
+        f"(con ajuste de {t.depreciacion_1000km:,.0f} € por cada 1.000 km).".replace(",", "."),
+    )
+    return redirect("busqueda_editar", pk=t.busqueda_id)

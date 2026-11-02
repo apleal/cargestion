@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Tasación · {{ b.nombre }} · {{ app_name }}{% endblock %}
+{% block content %}
+<p class="mono"><a href="{% url 'busqueda_editar' b.pk %}#tasador">← {{ b.nombre }}</a></p>
+<h1>Tasación de mercado</h1>
+<p class="mono ayuda">{{ b.nombre }} · {{ b.km_referencia|miles }} km · {{ t.creada|date:"d/m/Y H:i" }} · {{ t.n_pegados }} anuncios pegados → {{ t.n_comparables }} parecidos → {{ t.n_usados }} usados</p>
+
+{% if t.error %}
+<div class="card aviso"><b>No se ha podido calcular un precio.</b> {{ t.error }}</div>
+{% else %}
+<div class="card">
+  <p class="mono ayuda" style="margin:0">Precio de venta sugerido</p>
+  <p style="font-size:2.2rem;font-weight:700;margin:.1em 0">{{ t.precio_sugerido|eur }}</p>
+  <p class="mono ayuda">Precio de anuncio típico a {{ t.km_referencia|miles }} km: <b>{{ t.precio_mercado|eur }}</b> (rango habitual {{ t.rango_bajo|eur }} – {{ t.rango_alto|eur }}) · menos {{ t.descuento_pct|floatformat:"-1" }} % de negociación.<br>
+  Cada 1.000 km más, el precio baja unos <b>{{ t.depreciacion_1000km|floatformat:0 }} €</b>
+  {% if t.pendiente_propia %}(medido en estos anuncios){% else %}(estimación general: hay pocos anuncios o todos con km parecidos){% endif %}.</p>
+  {% if t.aplicada %}
+    <p><span class="pill ok">Aplicada el {{ t.aplicada|date:"d/m/Y H:i" }}</span></p>
+  {% else %}
+    <p class="mono ayuda">Al aplicar: la venta de la búsqueda pasa de <b>{{ b.precio_venta_estimado|eur }}</b> a <b>{{ t.precio_sugerido|eur }}</b>, y se ajustará {{ t.depreciacion_1000km|floatformat:0 }} € por cada 1.000 km de diferencia de cada coche (el tope de compra sale por coche).</p>
+    <form method="post" action="{% url 'tasacion_aplicar' t.pk %}">{% csrf_token %}<button class="primary" type="submit">Aplicar este precio</button></form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Revisión con IA</h2>
+  {% if t.ia_usada %}
+    <p><b>Confianza {{ t.ia_confianza }}</b> <span class="mono ayuda">· modelo {{ t.ia_modelo }} · {{ t.tokens_entrada|miles }} + {{ t.tokens_salida|miles }} tokens</span></p>
+    <p>{{ t.ia_resumen }}</p>
+  {% elif t.ia_error %}
+    <p class="mono ayuda">{{ t.ia_error }} El precio se ha calculado solo con estadística.</p>
+  {% else %}
+    <p class="mono ayuda">No se ha usado IA en esta tasación (solo estadística).</p>
+  {% endif %}
+</div>
+
+{% if t.anuncios %}
+<div class="card">
+  <h2>Anuncios usados ({{ t.anuncios|length }})</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Anuncio</th><th class="num">Precio</th><th class="num">Año</th><th class="num">Km</th><th class="num">CV</th><th>Prov.</th></tr></thead>
+    <tbody>
+      {% for a in t.anuncios %}
+      <tr><td>{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.titulo }}</a>{% else %}{{ a.titulo }}{% endif %}</td>
+        <td class="num">{{ a.precio|eur }}</td><td class="num">{{ a.anio|default_if_none:"—" }}</td>
+        <td class="num">{{ a.km|miles }}</td><td class="num">{{ a.cv|default_if_none:"—" }}</td><td>{{ a.provincia }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if t.excluidos %}
+<details class="card">
+  <summary><b>Anuncios descartados ({{ t.excluidos|length }})</b> <span class="mono ayuda">por los filtros de la búsqueda o por la IA</span></summary>
+  <div class="tw"><table>
+    <thead><tr><th>Anuncio</th><th class="num">Precio</th><th class="num">Km</th><th>Quién</th><th>Motivo</th></tr></thead>
+    <tbody>
+      {% for a in t.excluidos %}
+      <tr><td>{{ a.titulo }}</td><td class="num">{{ a.precio|eur }}</td><td class="num">{{ a.km|miles }}</td>
+        <td>{% if a.por == 'ia' %}IA{% else %}filtro{% endif %}</td><td>{{ a.motivo }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endif %}
+{% endblock %}

@@ -27,7 +27,22 @@ HOLGURA_LISTADO = Decimal("400")
 TIERS = (("15", Decimal("0.15")), ("12", Decimal("0.12")), ("10", Decimal("0.10")))
 
 
-def _valoracion_virtual(b: BusquedaOportunidad, precio: Decimal, iva: Decimal) -> Valoracion:
+def precio_venta_para(b: BusquedaOportunidad, km: int | None) -> Decimal:
+    """Precio de venta estimado de un coche con ``km``: el de la búsqueda, ajustado por la
+    diferencia de km con aquel al que corresponde (``depreciacion_1000km`` € por cada 1.000 km).
+    Sin ajuste configurado, o sin km, es el mismo precio para todos."""
+    base = Decimal(b.precio_venta_estimado or 0)
+    ajuste = Decimal(b.depreciacion_1000km or 0)
+    km_base = b.km_base_venta or b.km_referencia
+    if not ajuste or km is None or not km_base:
+        return base
+    ajustado = base + ajuste * (Decimal(km_base) - Decimal(km)) / Decimal(1000)
+    return max(ajustado, Decimal(0)).quantize(Decimal("1"))
+
+
+def _valoracion_virtual(
+    b: BusquedaOportunidad, precio: Decimal, iva: Decimal, km: int | None = None
+) -> Valoracion:
     """Una valoración SIN guardar con los costes de la búsqueda, para usar el motor."""
     proveedor = Proveedor.objects.get(nombre="Auto1")
     tipo = (
@@ -37,7 +52,7 @@ def _valoracion_virtual(b: BusquedaOportunidad, precio: Decimal, iva: Decimal) -
     return Valoracion(
         proveedor=proveedor, tipo_subasta=tipo, iva_anuncio=iva, precio_salida=precio,
         fecha_valoracion=timezone.localdate(),
-        precio_venta_estimado=b.precio_venta_estimado,
+        precio_venta_estimado=precio_venta_para(b, km),
         estado_carroceria=b.estado_carroceria, piezas_pintura=b.piezas_pintura,
         coste_alberto=b.coste_alberto, coste_gasolina=b.coste_gasolina,
         coste_pintura_por_pieza=b.coste_pintura_por_pieza, coste_garantia=b.coste_garantia,
@@ -52,10 +67,13 @@ def _pujas_maximas(res) -> dict[str, Decimal | None]:
     return {tier: por_objetivo.get(obj) for tier, obj in TIERS}
 
 
-def evaluar(b: BusquedaOportunidad, precio: Decimal, iva: Decimal = Decimal("0")) -> dict:
+def evaluar(
+    b: BusquedaOportunidad, precio: Decimal, iva: Decimal = Decimal("0"), km: int | None = None
+) -> dict:
     """¿Se puede comprar a ``precio`` (con ese IVA de anuncio)? Devuelve el tier
-    (15/12/10 o ""), el tope al 10 %, el margen hasta ese tope y la rentabilidad."""
-    v = _valoracion_virtual(b, precio, iva)
+    (15/12/10 o ""), el tope al 10 %, el margen hasta ese tope y la rentabilidad.
+    ``km`` ajusta el precio de venta si la búsqueda tiene ajuste por km."""
+    v = _valoracion_virtual(b, precio, iva, km)
     res = services.calcular(v, puja=precio)
     pujas = _pujas_maximas(res)
     tier = next((t for t, _ in TIERS if pujas[t] is not None and precio <= pujas[t]), "")
@@ -67,6 +85,7 @@ def evaluar(b: BusquedaOportunidad, precio: Decimal, iva: Decimal = Decimal("0")
         "margen_10": (p10 - precio) if (tier and p10 is not None) else None,
         "rentabilidad": d.rentabilidad_coste if d else None,
         "beneficio": d.beneficio_neto if d else None,
+        "precio_venta": v.precio_venta_estimado,
     }
 
 
@@ -74,7 +93,8 @@ def precio_max_listado(b: BusquedaOportunidad) -> int:
     """Precio del listado hasta el que merece la pena abrir la ficha (0 = ninguno)."""
     if not b.precio_venta_estimado:
         return 0
-    v = _valoracion_virtual(b, Decimal("0"), Decimal("0"))
+    # el coche que más vale es el de menos km: ese marca el precio máximo que interesa
+    v = _valoracion_virtual(b, Decimal("0"), Decimal("0"), b.rango_km[0])
     p10 = _pujas_maximas(services.calcular(v))["10"]
     if p10 is None:
         return 0
@@ -91,8 +111,8 @@ def _decimal(x) -> Decimal | None:
     return None if x in (None, "") else Decimal(str(x))
 
 
-def _aplicar_costes_de_busqueda(v: Valoracion, b: BusquedaOportunidad) -> None:
-    v.precio_venta_estimado = b.precio_venta_estimado
+def _aplicar_costes_de_busqueda(v: Valoracion, b: BusquedaOportunidad, km: int | None = None) -> None:
+    v.precio_venta_estimado = precio_venta_para(b, km)
     v.estado_carroceria = b.estado_carroceria or v.estado_carroceria
     v.piezas_pintura = b.piezas_pintura
     for campo in (
@@ -123,7 +143,7 @@ def pasar_a_seguimiento(op: Oportunidad, linea: str, usuario=None) -> Valoracion
     sesion = services.sesion_auto1_continua(usuario=usuario)
     v, era_retasacion = services.crear_valoracion_desde_lote(lote, sesion, usuario=usuario)
     if not era_retasacion or not v.precio_venta_estimado:
-        _aplicar_costes_de_busqueda(v, op.busqueda)
+        _aplicar_costes_de_busqueda(v, op.busqueda, lote.kilometros or op.km)
     v.observaciones = f"Oportunidad «{op.busqueda.nombre}». {v.observaciones}"[:500]
     v.ultima_comprobacion = timezone.now()
     services.recalcular_y_guardar(v)
@@ -161,6 +181,7 @@ def registrar_resultado(b: BusquedaOportunidad, datos: dict, usuario=None) -> Re
         precio = Decimal(str(t["precio"]))
         linea = coche.get("linea")
         iva = None
+        lote = None
         if linea:
             lote = parsear_linea_auto1(linea)
             if not lote.dudosos and lote.precio_subasta:
@@ -183,7 +204,8 @@ def registrar_resultado(b: BusquedaOportunidad, datos: dict, usuario=None) -> Re
 
             if iva is not None:
                 revisados += 1
-                ev = evaluar(b, precio, iva)
+                ev = evaluar(b, precio, iva, km=t.get("km") or (lote.kilometros if lote else None))
+                op.precio_venta = ev["precio_venta"]
                 op.evaluada, op.iva_anuncio = True, iva
                 op.tier, op.puja_maxima_10 = ev["tier"], ev["puja_maxima_10"]
                 op.margen_10, op.rentabilidad, op.beneficio = (
