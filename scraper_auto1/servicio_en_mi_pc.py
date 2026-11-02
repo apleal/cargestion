@@ -66,6 +66,12 @@ def main() -> None:
     )
     pedir("AUTO1_EMAIL", "Email de Auto1")
     pedir("AUTO1_PASSWORD", "Contraseña de Auto1", secreto=True)
+    # Opcional: para que ESTE servicio también avise por Telegram (Intro = no avisar desde el PC).
+    if not os.environ.get("TELEGRAM_BOT_TOKEN"):
+        tg = getpass.getpass("Token del bot de Telegram (opcional, Intro para omitir): ").strip()
+        if tg:
+            os.environ["TELEGRAM_BOT_TOKEN"] = tg
+            os.environ["TELEGRAM_CHAT_ID"] = os.environ.get("TELEGRAM_CHAT_ID") or input("Chat ID de Telegram: ").strip()
     # En tu PC se ve el navegador (así ves lo que hace); HEADLESS=1 para ocultarlo.
     os.environ.setdefault("HEADLESS", "0")
     os.environ.setdefault("TZ_NAME", "Europe/Madrid")

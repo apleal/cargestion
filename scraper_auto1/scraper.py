@@ -749,11 +749,18 @@ def leer_una_busqueda(cfg: dict, driver, b: dict, origen: str) -> dict:
     deja el resultado en la app. Devuelve su respuesta (con los avisos)."""
     log(f"Búsqueda «{b['nombre']}»: leyendo el listado…")
     res = listado.leer_listado(
-        driver, b["url_listado"], max_paginas=cfg["search_max_pages"], pausa=cfg["pause"], log=log
+        driver, b["url_listado"], max_paginas=cfg["search_max_pages"],
+        pausa=min(cfg["pause"], 2), log=log,
     )
     tarjetas = res["tarjetas"]
     buenas, malas = listado.filtrar(tarjetas, b)
-    log(f"  {len(tarjetas)} coches leídos, {len(buenas)} encajan, {len(malas)} descartados.")
+    motivos: dict[str, int] = {}
+    for _, m in malas:
+        clave = m.split(" (")[0]
+        motivos[clave] = motivos.get(clave, 0) + 1
+    detalle = " · ".join(f"{n} × {m}" for m, n in motivos.items())
+    log(f"  {len(tarjetas)} coches leídos, {len(buenas)} encajan, {len(malas)} descartados"
+        + (f" ({detalle})." if detalle else "."))
 
     tope = b.get("precio_max_listado") or 0
     candidatos = [
@@ -836,7 +843,12 @@ def ejecutar_busquedas(cfg: dict, ids: list[int] | None = None, origen: str = "p
     if avisos:
         partes = [f"🎯 OPORTUNIDADES AUTO1 ({len(avisos)})"]
         partes += [_texto_aviso_oportunidad(a) for a in avisos]
+        if not ((cfg["tg_token"] and cfg["tg_chat"]) or cfg["webhook"]):
+            log("  Aviso NO enviado: este servicio no tiene Telegram configurado "
+                "(TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID). Los coches están en la pantalla Oportunidades.")
         enviar_aviso(cfg, "\n".join(partes), {"oportunidades": avisos})
+    log(f"Oportunidades terminadas: {len(busquedas)} búsqueda(s), {len(avisos)} aviso(s). "
+        "Vuelvo a esperar (aviso a la app cada pocos segundos).")
 
 
 def latido(

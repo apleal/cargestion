@@ -189,17 +189,30 @@ def url_pagina(url: str, pagina: int) -> str:
 JS_BAJAR = "window.scrollTo(0, document.body.scrollHeight);"
 
 
-def _esperar_tarjetas(driver, segundos: float) -> str:
-    """Espera a que haya tarjetas y a que dejen de aparecer (carga perezosa)."""
-    fin = time.monotonic() + segundos
+def _ahora() -> float:
+    return time.monotonic()
+
+
+def _dormir(segundos: float) -> None:
+    time.sleep(segundos)
+
+
+def _esperar_tarjetas(driver, segundos: float, sin_tarjetas: float | None = None) -> str:
+    """Espera a que haya tarjetas y a que dejen de aparecer (carga perezosa).
+
+    ``sin_tarjetas``: si pasado ese tiempo no hay ni una tarjeta se da la página
+    por vacía (p. ej. la página siguiente a la última), en vez de esperar todo
+    ``segundos``."""
+    inicio = _ahora()
+    fin = inicio + segundos
     ultimo, estable = -1, 0
     html = ""
-    while time.monotonic() < fin:
+    while _ahora() < fin:
         try:
             driver.execute_script(JS_BAJAR)
             html = driver.page_source
         except Exception:
-            time.sleep(0.5)
+            _dormir(0.5)
             continue
         n = len(_trocear(html))
         if n and n == ultimo:
@@ -208,8 +221,10 @@ def _esperar_tarjetas(driver, segundos: float) -> str:
                 return html
         else:
             estable = 0
+        if n == 0 and sin_tarjetas is not None and _ahora() - inicio >= sin_tarjetas:
+            return html
         ultimo = n
-        time.sleep(1.2)
+        _dormir(0.8)
     return html
 
 
@@ -224,7 +239,8 @@ def leer_listado(driver, url: str, max_paginas: int = 15, pausa: float = 3.0, lo
     aviso = ""
     for n in range(1, max_paginas + 1):
         driver.get(url_pagina(url, n))
-        html = _esperar_tarjetas(driver, 25)
+        # la 1ª página puede tardar en cargar; una página posterior sin coches es solo «no hay más»
+        html = _esperar_tarjetas(driver, 25, sin_tarjetas=None if n == 1 else 6)
         tarjetas = parsear_tarjetas(html)
         if not tarjetas:
             if "signin" in driver.current_url:
@@ -239,7 +255,7 @@ def leer_listado(driver, url: str, max_paginas: int = 15, pausa: float = 3.0, lo
             break
         for t in nuevas:
             todas[t["referencia"]] = t
-        time.sleep(pausa)
+        _dormir(pausa)
     else:
         aviso = f"Se ha parado en el límite de {max_paginas} páginas: puede haber más coches sin leer."
     return {"tarjetas": list(todas.values()), "paginas": paginas, "aviso": aviso}

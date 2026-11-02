@@ -167,6 +167,16 @@ class NavegadorFalso:
         return None
 
 
+def _reloj_rapido(monkeypatch):
+    """Reloj falso: avanza 1 s por consulta y no duerme, así las esperas no cuestan tiempo real."""
+    import listado
+
+    ticks = iter(range(0, 10**7))
+    monkeypatch.setattr(listado, "_ahora", lambda: float(next(ticks)))
+    monkeypatch.setattr(listado, "_dormir", lambda s: None)
+    return ticks
+
+
 def _pagina(*refs):
     return "<html><body>" + "".join(tarjeta(r, f"Nissan Qashqai {r}", PRECIO_SUBASTA) for r in refs) + "</body></html>"
 
@@ -174,7 +184,7 @@ def _pagina(*refs):
 def test_recorre_las_paginas_hasta_que_no_hay_mas(monkeypatch):
     import listado
 
-    monkeypatch.setattr(listado.time, "sleep", lambda s: None)
+    _reloj_rapido(monkeypatch)
     nav = NavegadorFalso({1: _pagina("A1", "A2"), 2: _pagina("B1", "B2"), 3: _pagina("C1")})
     res = listado.leer_listado(nav, "https://www.auto1.com/es/app/merchant/cars?page=1&x=1", max_paginas=10, log=lambda m: None)
     assert [t["referencia"] for t in res["tarjetas"]] == ["A1", "A2", "B1", "B2", "C1"]
@@ -184,7 +194,7 @@ def test_recorre_las_paginas_hasta_que_no_hay_mas(monkeypatch):
 def test_se_para_si_una_pagina_repite_las_anteriores(monkeypatch):
     import listado
 
-    monkeypatch.setattr(listado.time, "sleep", lambda s: None)
+    _reloj_rapido(monkeypatch)
     nav = NavegadorFalso({1: _pagina("A1", "A2"), 2: _pagina("A1", "A2"), 3: _pagina("Z9")})
     res = listado.leer_listado(nav, "https://www.auto1.com/es/app/merchant/cars?page=1", max_paginas=10, log=lambda m: None)
     assert [t["referencia"] for t in res["tarjetas"]] == ["A1", "A2"] and nav.visitadas == [1, 2]
@@ -193,7 +203,7 @@ def test_se_para_si_una_pagina_repite_las_anteriores(monkeypatch):
 def test_avisa_si_llega_al_limite_de_paginas(monkeypatch):
     import listado
 
-    monkeypatch.setattr(listado.time, "sleep", lambda s: None)
+    _reloj_rapido(monkeypatch)
     nav = NavegadorFalso({1: _pagina("A1"), 2: _pagina("B1")})
     res = listado.leer_listado(nav, "https://www.auto1.com/es/app/merchant/cars?page=1", max_paginas=2, log=lambda m: None)
     assert res["paginas"] == 2 and "límite de 2 páginas" in res["aviso"]
@@ -203,8 +213,7 @@ def test_primera_pagina_vacia_da_aviso_y_sesion_caida_da_error(monkeypatch):
     import listado
     import pytest
 
-    monkeypatch.setattr(listado.time, "sleep", lambda s: None)
-    monkeypatch.setattr(listado.time, "monotonic", iter(range(0, 100000, 10)).__next__)
+    _reloj_rapido(monkeypatch)
     res = listado.leer_listado(NavegadorFalso({}), "https://www.auto1.com/es/app/merchant/cars?page=1", log=lambda m: None)
     assert res["tarjetas"] == [] and "ninguna tarjeta" in res["aviso"]
 
@@ -215,3 +224,37 @@ def test_primera_pagina_vacia_da_aviso_y_sesion_caida_da_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="caído la sesión"):
         listado.leer_listado(Caida({}), "https://www.auto1.com/es/app/merchant/cars?page=1", log=lambda m: None)
+
+
+def test_una_pagina_sin_coches_se_da_por_vacia_rapido(monkeypatch):
+    import listado
+
+    llamadas = {"n": 0}
+    ticks = iter(range(0, 10**7))
+
+    def reloj():
+        llamadas["n"] += 1
+        return float(next(ticks))
+
+    monkeypatch.setattr(listado, "_ahora", reloj)
+    monkeypatch.setattr(listado, "_dormir", lambda s: None)
+    nav = NavegadorFalso({})
+    nav.get("https://www.auto1.com/es/app/merchant/cars?page=2")
+    listado._esperar_tarjetas(nav, 25, sin_tarjetas=6)
+    rapido = llamadas["n"]
+    llamadas["n"] = 0
+    listado._esperar_tarjetas(nav, 25)
+    assert rapido < llamadas["n"] / 2  # con «sin_tarjetas» deja de esperar mucho antes
+
+
+def test_la_primera_pagina_espera_mas_que_las_siguientes(monkeypatch):
+    import listado
+
+    pedidos = []
+    original = listado._esperar_tarjetas
+    monkeypatch.setattr(listado, "_esperar_tarjetas",
+                        lambda d, s, sin_tarjetas=None: pedidos.append(sin_tarjetas) or original(d, s, sin_tarjetas))
+    _reloj_rapido(monkeypatch)
+    nav = NavegadorFalso({1: _pagina("A1"), 2: _pagina("B1")})
+    listado.leer_listado(nav, "https://www.auto1.com/es/app/merchant/cars?page=1", max_paginas=3, log=lambda m: None)
+    assert pedidos[0] is None and all(p == 6 for p in pedidos[1:])

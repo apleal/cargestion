@@ -125,3 +125,19 @@ def test_dry_run_no_envia_nada(entorno, cfg):
     cfg["dry_run"] = True
     scraper.ejecutar_busquedas(cfg)
     assert entorno["resultados"] == [] and entorno["fichas"] == ["OK1"]
+
+
+def test_el_log_cuenta_por_que_descarta_y_cuando_termina(entorno, cfg, capsys):
+    scraper.ejecutar_busquedas(cfg, origen="manual")
+    salida = capsys.readouterr().out
+    assert "6 coches leídos, 3 encajan, 3 descartados" in salida
+    assert "1 × km por encima" in salida and "1 × potencia distinta" in salida and "1 × cambio distinto" in salida
+    assert "Oportunidades terminadas: 1 búsqueda(s), 0 aviso(s)" in salida
+
+
+def test_si_no_hay_telegram_lo_dice_en_vez_de_callar(entorno, cfg, capsys):
+    cfg["tg_token"] = cfg["tg_chat"] = ""
+    entorno["avisos"] = [{"busqueda": "x", "referencia": "OK1", "nombre": "Nissan Qashqai OK1", "url": "u",
+                          "tipo": "subasta", "precio": "8000.00", "tier": "15", "margen_10": None, "km": 1}]
+    scraper.ejecutar_busquedas(cfg)
+    assert "Aviso NO enviado: este servicio no tiene Telegram configurado" in capsys.readouterr().out
