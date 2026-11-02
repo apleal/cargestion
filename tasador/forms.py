@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal  # noqa: F401
 from urllib.parse import urlparse
 
@@ -175,6 +176,12 @@ class BusquedaOportunidadForm(forms.ModelForm):
         host = (partes.hostname or "").lower()
         if partes.scheme != "https" or not (host == "auto1.com" or host.endswith(".auto1.com")):
             raise forms.ValidationError("Debe ser un enlace de Auto1 (https://www.auto1.com/…).")
+        if re.search(r"/merchant/car/[^/]+", partes.path):
+            raise forms.ValidationError(
+                "Ese enlace es la ficha de un solo coche. Hace falta el de la lista de resultados: "
+                "vuelve atrás hasta ver la rejilla de coches con tus filtros y copia esa dirección "
+                "(empieza por …/merchant/cars?…, con «cars» en plural)."
+            )
         if "/merchant/cars" not in partes.path:
             raise forms.ValidationError(
                 "Eso no es un listado de coches de Auto1. Copia la dirección de la página de resultados "

@@ -90,7 +90,10 @@ def test_hace_falta_la_linea_al_crear(web):
         ("https://www.google.com/es/app/merchant/cars?x=1", "enlace de Auto1"),
         ("http://www.auto1.com/es/app/merchant/cars", "enlace de Auto1"),
         ("https://auto1.com.malicioso.net/es/app/merchant/cars", "enlace de Auto1"),
-        ("https://www.auto1.com/es/app/merchant/car/AB12345", "no es un listado"),
+        ("https://www.auto1.com/es/app/merchant/car/AB12345", "ficha de un solo coche"),
+        ("https://www.auto1.com/es/app/merchant/car/UA50404?searchId=-1334037189_4c13&impression-source=search",
+         "ficha de un solo coche"),
+        ("https://www.auto1.com/es/app/merchant/", "no es un listado"),
         ("no es un enlace", "Introduzca una URL válida"),
     ],
 )
