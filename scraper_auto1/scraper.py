@@ -833,6 +833,7 @@ def latido(
         "programada": cfg["scan_at"],
         "en_curso": en_curso,
         "consumir_solicitud": consumir,
+        "busquedas": True,  # esta versión sabe hacer las búsquedas de Oportunidades
         "problemas": cfg.get("problemas", ""),
         "log": list(_LOG_BUFFER[:enviadas]),
     }

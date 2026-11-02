@@ -23,6 +23,9 @@ def oportunidades_lista(request):
     comprables = []
     for b in busquedas:
         b.ejec = b.ultima_ejecucion
+        b.pedida_hace_min = (
+            int((timezone.now() - b.solicitada).total_seconds() // 60) if b.solicitada else None
+        )
         b.n_vigentes = 0
         if b.ejec is not None and b.ejec.estado == "ok":
             vigentes = list(b.oportunidades.filter(ultima_ejecucion=b.ejec).select_related("valoracion"))

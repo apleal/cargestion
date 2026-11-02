@@ -11,7 +11,8 @@
 </div>
 
 <p class="mono ayuda estado-servicio">
-  {% if sv.conexion == 'conectado' %}🟢 Servicio conectado (último aviso hace {{ sv.minutos }} min). Busca solo cada mañana sobre las 07:00 y cuando pulsas «Buscar ahora».
+  {% if sv.conexion == 'conectado' and not sv.busquedas %}🟠 <b>El servicio está conectado pero es una versión anterior: no sabe hacer estas búsquedas.</b> Pulsa <b>Deploy</b> en el servicio <code>scraper-auto1</code> de EasyPanel (el de la web ya está al día) y en un minuto aquí pondrá 🟢.
+  {% elif sv.conexion == 'conectado' %}🟢 Servicio conectado (último aviso hace {{ sv.minutos }} min). Busca solo cada mañana sobre las 07:00 y cuando pulsas «Buscar ahora».
   {% elif sv.conexion == 'sin_conexion' %}🔴 Servicio sin conexión desde hace {{ sv.minutos }} min: no se buscará hasta que vuelva. Revisa que esté encendido en EasyPanel.
   {% else %}⚪ El servicio todavía no se ha conectado nunca: sin él no se busca nada (mira la pantalla de Seguimiento).{% endif %}
 </p>
@@ -69,7 +70,8 @@
         <td class="num">{{ b.precio_venta_estimado|eur }}</td>
         <td>{% if b.activa %}<span class="pill ok">Activa</span>{% else %}<span class="pill no">Pausada</span>{% endif %}</td>
         <td class="ultima-busqueda">
-          {% if b.solicitada %}⏳ <b>Pedida</b> {{ b.solicitada|date:"H:i" }}, esperando al servicio…<br>{% endif %}
+          {% if b.solicitada %}⏳ <b>Pedida</b> {{ b.solicitada|date:"H:i" }}, esperando al servicio…
+            {% if b.pedida_hace_min >= 3 %}<br><span class="neg">Lleva {{ b.pedida_hace_min }} min sin recogerse.{% if sv.conexion != 'conectado' %} El servicio no está conectado.{% elif not sv.busquedas %} El servicio conectado es una versión anterior: haz Deploy en <code>scraper-auto1</code>.{% else %} Si hay otra búsqueda o la pasada de seguimiento en curso, espera a que termine.{% endif %}</span>{% endif %}<br>{% endif %}
           {% if b.ejec %}
             {% if b.ejec.estado == 'ok' %}
               ✅ {{ b.ejec.inicio|date:"d/m H:i" }} · {{ b.ejec.leidos }} leídos · {{ b.ejec.encajan }} encajan{% if b.ejec.comprables %} · <b>🎯 {{ b.ejec.comprables }} comprable{{ b.ejec.comprables|pluralize:"s" }}</b>{% endif %}

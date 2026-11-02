@@ -257,3 +257,37 @@ def test_pantalla_de_coches_de_la_busqueda(web, busqueda, api):
 def test_las_pantallas_nuevas_exigen_login(client, busqueda):
     assert client.get(reverse("busqueda_coches", args=[busqueda.pk])).status_code == 302
     assert client.post(reverse("busqueda_buscar_ahora", args=[busqueda.pk])).status_code == 302
+
+
+# ---------------------------------------------------------------- diagnóstico del servicio
+def test_el_latido_anota_si_el_servicio_sabe_buscar(busqueda, api):
+    api.post(reverse("api_auto1_latido"), {}, format="json")  # servicio antiguo: no manda el campo
+    assert models.ServicioAuto1.obtener().soporta_busquedas is False
+    api.post(reverse("api_auto1_latido"), {"busquedas": True}, format="json")
+    assert models.ServicioAuto1.obtener().soporta_busquedas is True
+
+
+def test_la_lista_avisa_de_un_servicio_antiguo_conectado(web, busqueda, api):
+    api.post(reverse("api_auto1_latido"), {}, format="json")
+    html = web.get(reverse("oportunidades_lista")).content.decode()
+    assert "es una versión anterior" in html and "scraper-auto1" in html and "🟠" in html
+    api.post(reverse("api_auto1_latido"), {"busquedas": True}, format="json")
+    html = web.get(reverse("oportunidades_lista")).content.decode()
+    assert "es una versión anterior" not in html and "🟢 Servicio conectado" in html
+
+
+def test_una_peticion_sin_recoger_explica_por_que(web, busqueda, api):
+    from datetime import timedelta
+    from django.utils import timezone
+
+    busqueda.solicitada = timezone.now() - timedelta(minutes=5)
+    busqueda.save()
+    html = web.get(reverse("oportunidades_lista")).content.decode()
+    assert "Lleva 5 min sin recogerse" in html and "El servicio no está conectado" in html
+
+    api.post(reverse("api_auto1_latido"), {}, format="json")
+    assert "versión anterior: haz Deploy" in web.get(reverse("oportunidades_lista")).content.decode()
+
+    busqueda.solicitada = timezone.now()
+    busqueda.save()
+    assert "sin recogerse" not in web.get(reverse("oportunidades_lista")).content.decode()

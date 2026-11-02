@@ -318,6 +318,7 @@ class LatidoAuto1InputSerializer(serializers.Serializer):
     en_curso = serializers.BooleanField(required=False, default=False)
     consumir_solicitud = serializers.BooleanField(required=False, default=False)
     progreso = ProgresoSerializer(required=False)
+    busquedas = serializers.BooleanField(required=False, default=False)
     busquedas_consumidas = serializers.ListField(
         child=serializers.IntegerField(), required=False, max_length=200
     )
@@ -362,6 +363,7 @@ class LatidoAuto1View(APIView):
         if "programada" in datos:
             servicio.programada = datos["programada"]
         servicio.problemas = datos.get("problemas", "")
+        servicio.soporta_busquedas = datos["busquedas"]
 
         if datos["en_curso"]:
             if servicio.en_curso_desde is None or datos["consumir_solicitud"]:

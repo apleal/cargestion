@@ -102,7 +102,7 @@ def _estado_servicio_auto1() -> dict:
     if srv is None:
         return {"conexion": "nunca", "programada": "", "en_curso_desde": None,
                 "solicitada": None, "minutos": None, "pausado": False,
-                "detener": False, "problemas": "", "progreso": None}
+                "detener": False, "problemas": "", "progreso": None, "busquedas": False}
     if srv.ultimo_latido is None:
         conexion, minutos = "nunca", None
     else:
@@ -117,6 +117,7 @@ def _estado_servicio_auto1() -> dict:
         "pausado": srv.pausado,
         "detener": srv.detener_solicitada,
         "problemas": srv.problemas,
+        "busquedas": srv.soporta_busquedas,
         "progreso": (
             {
                 "actual": srv.progreso_actual,

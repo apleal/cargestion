@@ -611,6 +611,11 @@ class ServicioAuto1(models.Model):
     problemas = models.TextField(
         blank=True, help_text="Problemas de configuración que comunica el servicio."
     )
+    soporta_busquedas = models.BooleanField(
+        default=False,
+        help_text="El servicio sabe hacer las búsquedas de Oportunidades (versión nueva). "
+        "Un servicio antiguo conectado no las recoge nunca.",
+    )
 
     class Meta:
         verbose_name = "servicio de seguimiento Auto1"
