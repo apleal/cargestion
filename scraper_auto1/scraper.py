@@ -222,6 +222,19 @@ def crear_driver(cfg: dict):
         opts.add_argument(arg)
     opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     opts.add_experimental_option("useAutomationExtension", False)
+    # Sin «¿Guardar contraseña?», avisos de filtración ni notificaciones: son
+    # ventanas de Chrome que se quedan delante y entorpecen el login.
+    opts.add_experimental_option(
+        "prefs",
+        {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+            "profile.password_manager_leak_detection": False,
+            "profile.default_content_setting_values.notifications": 2,
+        },
+    )
+    opts.add_argument("--disable-save-password-bubble")
+    opts.add_argument("--disable-notifications")
     if cfg["headless"]:
         # El modo sin ventana se anuncia como "HeadlessChrome"; se disfraza de Chrome normal.
         so = "X11; Linux x86_64" if sys.platform.startswith("linux") else "Windows NT 10.0; Win64; x64"
@@ -281,6 +294,7 @@ def _login_una_vez(driver, cfg: dict) -> bool:
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='header-login-button']"))
         ).click()
+        log("Botón «Accede» pulsado.")
     except TimeoutException:
         raise RuntimeError(
             "No encuentro el botón «Accede» de la portada de Auto1: la página ha podido cambiar o va lenta."
@@ -290,12 +304,14 @@ def _login_una_vez(driver, cfg: dict) -> bool:
     password = _primer_visible(driver, By.NAME, "password", 20)
     if not email or not password:
         raise RuntimeError("No aparecen los campos de email y contraseña tras pulsar «Accede».")
+    log("Escribiendo usuario y contraseña…")
     email.clear()
     email.send_keys(cfg["email"])
     password.clear()
     password.send_keys(cfg["password"])
     time.sleep(1)  # que el formulario termine de reaccionar antes del Enter
     password.send_keys(Keys.RETURN)
+    log("Enviado. Esperando a que Auto1 deje entrar (puede tardar hasta un minuto)…")
 
     # Entrado = el formulario de contraseña deja de verse.
     inicio = time.monotonic()
