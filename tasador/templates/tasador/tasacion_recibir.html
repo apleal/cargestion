@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Recibiendo anuncios · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>Recibiendo los anuncios de coches.net…</h1>
+<p id="estado" class="mono ayuda">Un momento, estoy calculando el precio de {{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}.</p>
+<form id="envio" method="post" action="{% url 'valoracion_tasar' v.pk %}" hidden>
+  {% csrf_token %}
+  <textarea name="anuncios" id="anuncios"></textarea>
+  <input name="descuento" value="{{ descuento_defecto }}">
+  {% if usar_ia %}<input type="checkbox" name="usar_ia" checked>{% endif %}
+</form>
+<p id="sin-datos" class="card aviso" hidden>
+  No me ha llegado ningún anuncio. Abre coches.net desde <a href="{% url 'valoracion_tasar' v.pk %}">la pantalla de tasar</a>
+  y pulsa el marcador allí (no recargues esta página: los datos viajan solo una vez).
+</p>
+<script>
+  var p = new URLSearchParams(location.hash.slice(1)), datos = p.get('datos');
+  if (datos) {
+    document.getElementById('anuncios').value = datos;
+    history.replaceState(null, '', location.pathname);  // no dejar los anuncios en la dirección
+    document.getElementById('envio').submit();
+  } else {
+    document.getElementById('estado').hidden = true;
+    document.getElementById('sin-datos').hidden = false;
+  }
+</script>
+{% endblock %}

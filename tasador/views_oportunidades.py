@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from decimal import Decimal, InvalidOperation
 
-from . import models, tasacion_mercado
+from . import models, services, tasacion_mercado
 from .forms import BusquedaOportunidadForm
 from .views import _estado_servicio_auto1
 
@@ -159,7 +159,7 @@ def busqueda_tasar(request, pk):
 
 @login_required
 def tasacion_detalle(request, pk):
-    t = get_object_or_404(models.TasacionMercado.objects.select_related("busqueda"), pk=pk)
+    t = get_object_or_404(models.TasacionMercado.objects.select_related("busqueda", "valoracion"), pk=pk)
     return render(
         request, "tasador/tasacion_detalle.html",
         {"t": t, "b": t.busqueda, "ia_disponible": tasacion_mercado.clave_disponible()},
@@ -173,10 +173,70 @@ def tasacion_aplicar(request, pk):
     if not t.valida:
         messages.error(request, "Esa tasación no tiene un precio que aplicar.")
         return redirect("tasacion_detalle", pk=t.pk)
+    if not t.busqueda_id and not t.valoracion_id:
+        messages.error(request, "Esa tasación ya no está ligada a ningún coche.")
+        return redirect("tasacion_detalle", pk=t.pk)
     t.aplicar()
+    if t.busqueda_id:
+        messages.success(
+            request,
+            f"Aplicado: la búsqueda «{t.busqueda.nombre}» vende ahora a {t.precio_sugerido:,.0f} € "
+            f"(con ajuste de {t.depreciacion_1000km:,.0f} € por cada 1.000 km).".replace(",", "."),
+        )
+        return redirect("busqueda_editar", pk=t.busqueda_id)
     messages.success(
-        request,
-        f"Aplicado: la búsqueda «{t.busqueda.nombre}» vende ahora a {t.precio_sugerido:,.0f} € "
-        f"(con ajuste de {t.depreciacion_1000km:,.0f} € por cada 1.000 km).".replace(",", "."),
+        request, f"Aplicado: {t.nombre} se vende a {t.precio_sugerido:,.0f} € (ya recalculadas las pujas).".replace(",", ".")
     )
-    return redirect("busqueda_editar", pk=t.busqueda_id)
+    return redirect("sesion_detalle", pk=t.valoracion.sesion_subasta_id)
+
+
+def _descuento_de(request):
+    try:
+        d = Decimal(request.POST.get("descuento", "").replace(",", ".") or tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO)
+        if not (Decimal("0") <= d <= Decimal("30")):
+            raise InvalidOperation
+        return d
+    except InvalidOperation:
+        return None
+
+
+@login_required
+def valoracion_tasar(request, pk):
+    """Tasador de mercado de UN coche de la rejilla: abre coches.net ya filtrado, recibe los
+    anuncios (por el marcador o pegados) y enseña el precio de venta sugerido."""
+    v = get_object_or_404(models.Valoracion.objects.select_related("vehiculo", "sesion_subasta"), pk=pk)
+    if request.method == "POST":
+        descuento = _descuento_de(request)
+        if descuento is None:
+            messages.error(request, "El descuento de negociación debe ser un número entre 0 y 30.")
+            return redirect("valoracion_tasar", pk=v.pk)
+        usar_ia = request.POST.get("usar_ia") == "on" and tasacion_mercado.clave_disponible()
+        t = tasacion_mercado.tasar(
+            v, request.POST.get("anuncios", ""), descuento_pct=descuento, usuario=request.user, usar_ia=usar_ia
+        )
+        return redirect("tasacion_detalle", pk=t.pk)
+    ref = tasacion_mercado.referencia_de_valoracion(v)
+    return render(
+        request,
+        "tasador/valoracion_tasar.html",
+        {
+            "v": v, "ref": ref,
+            "url_cochesnet": tasacion_mercado.url_busqueda_cochesnet(ref, v.pk),
+            "snippet_js": tasacion_mercado.SNIPPET_JS,
+            "ia_disponible": tasacion_mercado.clave_disponible(),
+            "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
+            "tasaciones": list(v.vehiculo.tasaciones_mercado.all()[:5]),
+        },
+    )
+
+
+@login_required
+def valoracion_tasar_recibir(request, pk):
+    """Página puente: el marcador de coches.net manda aquí los anuncios en la parte # de la
+    dirección (no viaja al servidor); un pequeño script los envía a ``valoracion_tasar``."""
+    v = get_object_or_404(models.Valoracion.objects.select_related("vehiculo"), pk=pk)
+    return render(
+        request, "tasador/tasacion_recibir.html",
+        {"v": v, "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
+         "usar_ia": tasacion_mercado.clave_disponible()},
+    )

@@ -19,12 +19,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import statistics
+import unicodedata
+from dataclasses import dataclass
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.utils import timezone
 
-from .models import BusquedaOportunidad, TasacionMercado
+from .models import BusquedaOportunidad, Cambio, Combustible, TasacionMercado, Valoracion
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +50,8 @@ SNIPPET_JS = (
     "km:km,anio:anio,cv:cv,combustible:comb,provincia:prov,profesional:i.includes('profesional'),garantia:i.includes('garant')})});"
     "for(let y=0;y<document.documentElement.scrollHeight;y+=500){scrollTo(0,y);await new Promise(r=>setTimeout(r,350));leer()}"
     "leer();scrollTo(0,0);const s=JSON.stringify({origen:'coches.net',url:location.href,anuncios:[...M.values()]});"
+    "const q=new URLSearchParams(location.search),pa=q.get('pujaauto'),pp=q.get('pujaapp');"
+    "if(/^\\d+$/.test(pa||'')&&/^https?:\\/\\//.test(pp||'')){location.href=pp+'/valoraciones/'+pa+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
     "try{await navigator.clipboard.writeText(s);alert(M.size+' anuncios copiados. Pégalos en PujaAuto.')}"
     "catch(e){prompt(M.size+' anuncios: copia este texto (Ctrl+C) y pégalo en PujaAuto',s)}})();"
 )
@@ -56,6 +62,58 @@ MIN_COMPARABLES = 4
 MIN_PARA_PENDIENTE_PROPIA = 8
 SEPARACION_KM_PARA_PENDIENTE = 20000
 DESCUENTO_NEGOCIACION_DEFECTO = Decimal("5")
+
+
+@dataclass
+class ReferenciaCoche:
+    """El coche a tasar cuando no viene de una búsqueda: una fila de la rejilla."""
+
+    marca: str
+    modelo: str
+    nombre: str
+    anio: int | None
+    km_referencia: int
+    combustible: str = ""
+    cambio: str = ""
+    potencia_cv: int | None = None
+    tolerancia_cv: int = 10
+
+    def get_combustible_display(self) -> str:
+        return dict(Combustible.choices).get(self.combustible, "no indicado")
+
+    def get_cambio_display(self) -> str:
+        return dict(Cambio.choices).get(self.cambio, "no indicado")
+
+
+def referencia_de_valoracion(v: Valoracion) -> ReferenciaCoche:
+    veh = v.vehiculo
+    return ReferenciaCoche(
+        marca=veh.marca, modelo=veh.modelo,
+        nombre=" ".join(x for x in (veh.marca, veh.modelo, veh.version) if x),
+        anio=veh.anio, km_referencia=v.kilometros or veh.km_ultimo_conocido or 0,
+        combustible=veh.combustible or "", cambio=veh.cambio or "", potencia_cv=veh.potencia_cv,
+    )
+
+
+def _slug(texto: str) -> str:
+    sin = unicodedata.normalize("NFD", texto or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", sin.lower()).strip("-")
+
+
+def url_busqueda_cochesnet(ref, valoracion_id: int | None = None) -> str:
+    """La búsqueda de coches.net ya filtrada para este coche (marca, modelo, combustible,
+    año ±1 y km ±25.000). Si viene de la rejilla lleva el id para que el marcador devuelva
+    los anuncios a la app solo; la dirección de la app la añade el navegador."""
+    comb = {"gasolina": "gasolina", "diesel": "diesel"}.get(ref.combustible or "", "")
+    ruta = "/".join(p for p in (_slug(ref.marca), _slug(ref.modelo), comb, "segunda-mano") if p)
+    params = {}
+    if ref.anio:
+        params.update(MinYear=ref.anio - 1, MaxYear=ref.anio + 1)
+    if ref.km_referencia:
+        params.update(MinKms=max(0, ref.km_referencia - 25000), MaxKms=ref.km_referencia + 25000)
+    if valoracion_id:
+        params["pujaauto"] = valoracion_id
+    return f"https://www.coches.net/{ruta}/" + (f"?{urlencode(params)}" if params else "")
 
 
 class TasacionError(Exception):
@@ -319,16 +377,23 @@ def revisar_con_ia(b: BusquedaOportunidad, anuncios: list[dict], cliente=None) -
 
 # ---------------------------------------------------------------- todo junto
 def tasar(
-    b: BusquedaOportunidad,
+    objetivo,
     texto_pegado: str,
     descuento_pct: Decimal = DESCUENTO_NEGOCIACION_DEFECTO,
     usuario=None,
     usar_ia: bool = True,
     cliente_ia=None,
 ) -> TasacionMercado:
-    """Hace la tasación y la guarda (también si no se puede calcular, con el motivo en ``error``)."""
+    """Hace la tasación y la guarda (también si no se puede calcular, con el motivo en ``error``).
+    ``objetivo`` es una BusquedaOportunidad o una Valoracion (fila de la rejilla)."""
+    if isinstance(objetivo, BusquedaOportunidad):
+        b = objetivo
+        destino = {"busqueda": objetivo}
+    else:
+        b = referencia_de_valoracion(objetivo)
+        destino = {"vehiculo": objetivo.vehiculo, "valoracion": objetivo}
     t = TasacionMercado(
-        busqueda=b, usuario=usuario, creada=timezone.now(), km_referencia=b.km_referencia,
+        **destino, usuario=usuario, creada=timezone.now(), km_referencia=b.km_referencia,
         descuento_pct=Decimal(descuento_pct),
     )
     try:

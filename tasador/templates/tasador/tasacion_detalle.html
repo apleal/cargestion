@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load tasador_extras %}
-{% block title %}Tasación · {{ b.nombre }} · {{ app_name }}{% endblock %}
+{% block title %}Tasación · {{ t.nombre }} · {{ app_name }}{% endblock %}
 {% block content %}
-<p class="mono"><a href="{% url 'busqueda_editar' b.pk %}#tasador">← {{ b.nombre }}</a></p>
+<p class="mono">{% if t.busqueda_id %}<a href="{% url 'busqueda_editar' b.pk %}#tasador">← {{ t.nombre }}</a>{% elif t.valoracion_id %}<a href="{% url 'valoracion_tasar' t.valoracion_id %}">← {{ t.nombre }}</a>{% else %}{{ t.nombre }}{% endif %}</p>
 <h1>Tasación de mercado</h1>
-<p class="mono ayuda">{{ b.nombre }} · {{ b.km_referencia|miles }} km · {{ t.creada|date:"d/m/Y H:i" }} · {{ t.n_pegados }} anuncios pegados → {{ t.n_comparables }} parecidos → {{ t.n_usados }} usados</p>
+<p class="mono ayuda">{{ t.nombre }} · {{ t.km_referencia|miles }} km · {{ t.creada|date:"d/m/Y H:i" }} · {{ t.n_pegados }} anuncios pegados → {{ t.n_comparables }} parecidos → {{ t.n_usados }} usados</p>
 
 {% if t.error %}
 <div class="card aviso"><b>No se ha podido calcular un precio.</b> {{ t.error }}</div>
@@ -18,7 +18,11 @@
   {% if t.aplicada %}
     <p><span class="pill ok">Aplicada el {{ t.aplicada|date:"d/m/Y H:i" }}</span></p>
   {% else %}
-    <p class="mono ayuda">Al aplicar: la venta de la búsqueda pasa de <b>{{ b.precio_venta_estimado|eur }}</b> a <b>{{ t.precio_sugerido|eur }}</b>, y se ajustará {{ t.depreciacion_1000km|floatformat:0 }} € por cada 1.000 km de diferencia de cada coche (el tope de compra sale por coche).</p>
+    {% if t.busqueda_id %}
+    <p class="mono ayuda">Al aplicar: la venta de la búsqueda pasa de <b>{{ t.venta_actual|eur }}</b> a <b>{{ t.precio_sugerido|eur }}</b>, y se ajustará {{ t.depreciacion_1000km|floatformat:0 }} € por cada 1.000 km de diferencia de cada coche (el tope de compra sale por coche).</p>
+    {% else %}
+    <p class="mono ayuda">Al aplicar: la venta de este coche pasa de <b>{{ t.venta_actual|eur }}</b> a <b>{{ t.precio_sugerido|eur }}</b> y se recalculan sus pujas en la rejilla.</p>
+    {% endif %}
     <form method="post" action="{% url 'tasacion_aplicar' t.pk %}">{% csrf_token %}<button class="primary" type="submit">Aplicar este precio</button></form>
   {% endif %}
 </div>

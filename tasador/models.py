@@ -866,7 +866,14 @@ class TasacionMercado(models.Model):
     Solo SUGIERE: no cambia nada hasta que se pulsa «Aplicar»."""
 
     busqueda = models.ForeignKey(
-        BusquedaOportunidad, on_delete=models.CASCADE, related_name="tasaciones"
+        BusquedaOportunidad, on_delete=models.CASCADE, related_name="tasaciones", null=True, blank=True
+    )
+    vehiculo = models.ForeignKey(
+        "Vehiculo", on_delete=models.CASCADE, related_name="tasaciones_mercado", null=True, blank=True
+    )
+    valoracion = models.ForeignKey(
+        "Valoracion", on_delete=models.SET_NULL, related_name="+", null=True, blank=True,
+        help_text="La valoración (fila de la rejilla) desde la que se pidió; es la que se actualiza al aplicar.",
     )
     creada = models.DateTimeField(default=timezone.now)
     usuario = models.ForeignKey(
@@ -906,14 +913,37 @@ class TasacionMercado(models.Model):
         verbose_name_plural = "tasaciones de mercado"
 
     def __str__(self) -> str:
-        return f"{self.busqueda} · {self.creada:%d/%m %H:%M}"
+        return f"{self.nombre} · {self.creada:%d/%m %H:%M}"
+
+    @property
+    def nombre(self) -> str:
+        if self.busqueda_id:
+            return self.busqueda.nombre
+        v = self.vehiculo
+        return " ".join(x for x in (v.marca, v.modelo, v.version) if x) if v else "—"
+
+    @property
+    def venta_actual(self):
+        if self.busqueda_id:
+            return self.busqueda.precio_venta_estimado
+        return self.valoracion.precio_venta_estimado if self.valoracion_id else None
 
     @property
     def valida(self) -> bool:
         return not self.error and self.precio_sugerido is not None
 
     def aplicar(self) -> None:
-        """Pasa el precio sugerido (y la bajada por km) a la búsqueda."""
+        """Pasa el precio sugerido a la búsqueda (con su bajada por km) o a la valoración de la rejilla."""
+        if not self.busqueda_id:
+            from . import services
+
+            v = self.valoracion
+            v.precio_venta_estimado = self.precio_sugerido
+            v.save()
+            services.recalcular_y_guardar(v)
+            self.aplicada = timezone.now()
+            self.save(update_fields=["aplicada"])
+            return
         b = self.busqueda
         b.precio_venta_estimado = self.precio_sugerido
         b.depreciacion_1000km = self.depreciacion_1000km

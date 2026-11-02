@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Tasar · {{ ref.nombre }} · {{ app_name }}{% endblock %}
+{% block content %}
+<p class="mono"><a href="{% url 'sesion_detalle' v.sesion_subasta_id %}">← Volver a la subasta</a></p>
+<h1>🧮 Tasar: {{ ref.nombre }}</h1>
+<p class="mono ayuda">{{ ref.anio|default_if_none:"—" }} · {{ ref.km_referencia|miles }} km{% if ref.potencia_cv %} · {{ ref.potencia_cv }} CV{% endif %}{% if ref.combustible %} · {{ ref.get_combustible_display }}{% endif %} · venta actual: <b>{{ v.precio_venta_estimado|eur }}</b></p>
+
+<div class="card" style="max-width:760px">
+  <h2>Cómo saber a cuánto venderlo</h2>
+  <p class="mono ayuda">El agente mira anuncios reales de coches.net de coches como este, quita los que no son comparables, ajusta por km y te dice el precio de venta. <b>Solo sugiere</b>: no cambia nada hasta que pulses «Aplicar».</p>
+  <ol style="line-height:1.9">
+    <li><a id="abrir-cochesnet" class="btn primary" href="{{ url_cochesnet }}" target="_blank" rel="noopener">1 · Abrir coches.net con este coche ↗</a>
+      <span class="mono ayuda">ya filtrado por marca, modelo, año y km</span></li>
+    <li>En esa pestaña, pulsa tu marcador <b>📋 Copiar anuncios de coches.net</b>. Baja solo la página y, al terminar, <b>te trae aquí el resultado</b>.</li>
+    <li>Verás el precio sugerido y pulsas «Aplicar»: la columna Venta de la rejilla se actualiza.</li>
+  </ol>
+
+  <details>
+    <summary><b>¿No tienes el marcador? Instálalo (una sola vez)</b></summary>
+    <ol class="mono ayuda" style="line-height:1.6">
+      <li>Muestra la barra de marcadores de tu navegador (Ctrl+Mayús+B).</li>
+      <li>Arrastra este botón a la barra: <a class="btn mini-btn primary" href="javascript:{{ snippet_js|urlencode }}" onclick="alert('Arrástralo a la barra de marcadores; no se pulsa aquí.');return false;">📋 Copiar anuncios de coches.net</a></li>
+      <li>Si no puedes arrastrarlo: crea un marcador nuevo y pega el código de abajo como dirección, con «javascript:» delante.</li>
+    </ol>
+    <textarea readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_js }}</textarea>
+  </details>
+
+  <details style="margin-top:10px">
+    <summary><b>O pega los anuncios a mano</b> <span class="mono ayuda">(si el marcador no te trae solo el resultado)</span></summary>
+    <form method="post" action="{% url 'valoracion_tasar' v.pk %}">
+      {% csrf_token %}
+      <textarea name="anuncios" rows="4" style="width:100%" placeholder='{"origen":"coches.net","anuncios":[…]}' required></textarea>
+      <div class="costs-grid" style="margin-top:8px">
+        <p><label>Descuento de negociación (%)</label><input type="text" name="descuento" value="{{ descuento_defecto }}" inputmode="decimal"></p>
+        <p><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="usar_ia" {% if ia_disponible %}checked{% else %}disabled{% endif %} style="width:auto"> Revisar con IA</label>
+        {% if not ia_disponible %}<span class="mono ayuda">Falta <code>ANTHROPIC_API_KEY</code> en el servidor: solo estadística.</span>{% endif %}</p>
+      </div>
+      <button type="submit" class="primary">Analizar</button>
+    </form>
+  </details>
+</div>
+
+{% if tasaciones %}
+<div class="card" style="max-width:760px">
+  <h2>Tasaciones anteriores de este coche</h2>
+  <table><tbody>
+    {% for t in tasaciones %}
+    <tr>
+      <td><a href="{% url 'tasacion_detalle' t.pk %}">{{ t.creada|date:"d/m/Y H:i" }}</a></td>
+      <td>{% if t.valida %}<b>{{ t.precio_sugerido|eur }}</b> sugerido · {{ t.n_usados }} anuncios{% else %}<span class="neg">sin resultado</span>{% endif %}</td>
+      <td>{% if t.aplicada %}<span class="pill ok">aplicada</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+<script>
+  // la dirección de esta app viaja en el enlace para que el marcador sepa adónde devolver los anuncios
+  var a = document.getElementById('abrir-cochesnet');
+  a.href += (a.href.indexOf('?') < 0 ? '?' : '&') + 'pujaapp=' + encodeURIComponent(location.origin);
+</script>
+{% endblock %}

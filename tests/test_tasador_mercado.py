@@ -354,3 +354,108 @@ def test_la_pantalla_de_coches_enseña_la_venta_usada(web, busqueda):
     so.registrar_resultado(busqueda, {"coches": [{"tarjeta": t, "linea": f"Nissan\t{tope - 500}\t40,00\tUA1\t2019\t110000\tGasolina\tManual"}]})
     html = web.get(reverse("busqueda_coches", args=[busqueda.pk])).content.decode()
     assert "Venta est." in html and "13.400 €" in html
+
+
+# ================================================================== el tasador desde la rejilla (por coche)
+from tasador import services  # noqa: E402
+from tasador.parser import parsear_linea_auto1  # noqa: E402
+
+
+@pytest.fixture
+def coche(busqueda):
+    """Una fila de la rejilla: un Qashqai de Auto1 con sus km."""
+    lote = parsear_linea_auto1("Nissan Qashqai 1.3 DIG-T N-Connecta\t9000\t40,00\tUA1\t2019\t100000\tGasolina\tManual")
+    v, _ = services.crear_valoracion_desde_lote(lote, services.sesion_auto1_continua())
+    v.vehiculo.potencia_cv = 140
+    v.vehiculo.save()
+    return v
+
+
+def test_la_direccion_de_coches_net_sale_filtrada_con_el_coche(coche):
+    ref = tm.referencia_de_valoracion(coche)
+    assert (ref.marca, ref.modelo, ref.anio, ref.km_referencia, ref.combustible) == ("Nissan", "Qashqai", 2019, 100000, "gasolina")
+    url = tm.url_busqueda_cochesnet(ref, coche.pk)
+    assert url.startswith("https://www.coches.net/nissan/qashqai/gasolina/segunda-mano/?")
+    for trozo in ("MinYear=2018", "MaxYear=2020", "MinKms=75000", "MaxKms=125000", f"pujaauto={coche.pk}"):
+        assert trozo in url
+
+
+def test_la_direccion_quita_acentos_y_no_pone_combustible_que_no_conoce():
+    ref = tm.ReferenciaCoche(marca="Citroën", modelo="C3 Aircross", nombre="x", anio=None, km_referencia=0, combustible="hibrido")
+    assert tm.url_busqueda_cochesnet(ref) == "https://www.coches.net/citroen/c3-aircross/segunda-mano/"
+
+
+def test_tasar_un_coche_de_la_rejilla_lo_guarda_ligado_al_coche(coche):
+    t = tm.tasar(coche, pegado([anuncio(i, 80000 + i * 4000) for i in range(10)]), usar_ia=False)
+    assert t.valida and t.busqueda is None and t.vehiculo == coche.vehiculo and t.valoracion == coche
+    assert t.km_referencia == 100000 and t.nombre == "Nissan Qashqai 1.3 DIG-T N-Connecta"
+    assert t.venta_actual == coche.precio_venta_estimado
+
+
+def test_aplicar_pone_la_venta_del_coche_y_recalcula_sus_pujas(coche):
+    antes = coche.r_puja_maxima_principal
+    t = tm.tasar(coche, pegado([anuncio(i, 80000 + i * 4000) for i in range(10)]), usar_ia=False)
+    t.aplicar()
+    coche.refresh_from_db()
+    assert coche.precio_venta_estimado == t.precio_sugerido > 0 and t.aplicada is not None
+    assert coche.r_puja_maxima_principal != antes and coche.r_puja_maxima_principal > 0  # tenía venta 0: ahora hay puja
+
+
+def test_el_marcador_devuelve_los_anuncios_a_la_app_si_viene_de_la_rejilla():
+    js = tm.SNIPPET_JS
+    assert "pujaauto" in js and "pujaapp" in js and "/tasar/recibir/#datos=" in js
+    assert chr(92) + "d+" in js and "https?:" in js  # valida el id y que la dirección sea http(s)
+
+
+@pytest.fixture
+def web2(client, coche, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    get_user_model().objects.create_user("web", password="x")
+    client.login(username="web", password="x")
+    return client
+
+
+def test_la_rejilla_trae_el_enlace_tasar_en_la_columna_venta(web2, coche):
+    html = web2.get(reverse("sesion_detalle", args=[coche.sesion_subasta_id])).content.decode()
+    assert reverse("valoracion_tasar", args=[coche.pk]) in html and "🧮 Tasar" in html
+
+
+def test_la_pantalla_de_tasar_un_coche_abre_coches_net_ya_filtrado(web2, coche):
+    html = web2.get(reverse("valoracion_tasar", args=[coche.pk])).content.decode()
+    assert "Abrir coches.net con este coche" in html
+    assert "https://www.coches.net/nissan/qashqai/gasolina/segunda-mano/?MinYear=2018" in html and f"pujaauto={coche.pk}" in html
+    assert "pujaapp" in html and "location.origin" in html  # la dirección de la app la pone el navegador
+    assert "javascript:" in html and "ANTHROPIC_API_KEY" in html
+
+
+def test_la_pagina_puente_recibe_los_anuncios_por_el_fragmento_y_los_envia(web2, coche):
+    r = web2.get(reverse("valoracion_tasar_recibir", args=[coche.pk]))
+    html = r.content.decode()
+    assert r.status_code == 200 and "location.hash" in html and "datos" in html
+    assert reverse("valoracion_tasar", args=[coche.pk]) in html and "csrfmiddlewaretoken" in html
+
+
+def test_tasar_un_coche_desde_la_pantalla_y_aplicar_vuelve_a_la_rejilla(web2, coche):
+    r = web2.post(reverse("valoracion_tasar", args=[coche.pk]),
+                  {"anuncios": pegado([anuncio(i, 80000 + i * 4000) for i in range(10)]), "descuento": "5"})
+    t = models.TasacionMercado.objects.get()
+    assert r.status_code == 302 and r.url == reverse("tasacion_detalle", args=[t.pk])
+    html = web2.get(r.url).content.decode()
+    assert "Precio de venta sugerido" in html and "la venta de este coche pasa de" in html
+    assert reverse("valoracion_tasar", args=[coche.pk]) in html  # enlace de vuelta
+
+    r = web2.post(reverse("tasacion_aplicar", args=[t.pk]))
+    assert r.status_code == 302 and r.url == reverse("sesion_detalle", args=[coche.sesion_subasta_id])
+    coche.refresh_from_db()
+    assert coche.precio_venta_estimado == t.precio_sugerido
+
+
+def test_las_pantallas_de_tasar_un_coche_exigen_login(client, coche):
+    assert client.get(reverse("valoracion_tasar", args=[coche.pk])).status_code == 302
+    assert client.post(reverse("valoracion_tasar", args=[coche.pk])).status_code == 302
+    assert client.get(reverse("valoracion_tasar_recibir", args=[coche.pk])).status_code == 302
+
+
+def test_un_descuento_invalido_no_tasa_el_coche(web2, coche):
+    r = web2.post(reverse("valoracion_tasar", args=[coche.pk]), {"anuncios": pegado(COMPARABLES), "descuento": "x"}, follow=True)
+    assert "entre 0 y 30" in r.content.decode() and models.TasacionMercado.objects.count() == 0
