@@ -32,9 +32,33 @@ def pedir(nombre: str, pregunta: str, secreto: bool = False) -> None:
     os.environ[nombre] = valor
 
 
+def pedir_url_app() -> None:
+    """La dirección de TU app (PujaAuto), no la de Auto1: se comprueba antes de seguir."""
+    while True:
+        pedir_url = os.environ.get("APP_URL") or input(
+            "Dirección de TU app PujaAuto, la que abres en el navegador para entrar\n"
+            "(solo el dominio, p. ej. https://tu-dominio.com): "
+        )
+        url = pedir_url.strip().rstrip("/")
+        if not url:
+            sys.exit("Falta APP_URL.")
+        if "://" not in url:
+            url = "https://" + url
+        if "auto1.com" in url.lower():
+            print("\n  Esa es una dirección de Auto1. Aquí hace falta la de TU app (PujaAuto),\n"
+                  "  la que abres para ver tus subastas y Oportunidades. Inténtalo otra vez.\n")
+            os.environ.pop("APP_URL", None)
+            continue
+        if "?" in url or len(url.split("/", 3)) > 3:
+            url = "/".join(url.split("/", 3)[:3])  # solo esquema + dominio
+        os.environ["APP_URL"] = url
+        print(f"  Usaré: {url}")
+        return
+
+
 def main() -> None:
     print(__doc__.split("Los datos")[0])
-    pedir("APP_URL", "Dirección de tu app (p. ej. https://tu-dominio)")
+    pedir_url_app()
     pedir(
         "APP_TOKEN",
         "Token de la API (el de «python manage.py crear_token_api --usuario n8n»; sin la palabra Token)",
