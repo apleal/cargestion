@@ -22,8 +22,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import services
-from .models import BusquedaOportunidad, EventoAuto1, PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
+from . import services, services_oportunidades
+from .models import BusquedaOportunidad, EjecucionBusqueda, EventoAuto1, PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -88,9 +88,45 @@ class BusquedasOportunidadView(APIView):
                     "tolerancia_cv": b.tolerancia_cv,
                     "cambio": b.cambio,
                     "palabras_titulo": b.palabras_titulo,
+                    "precio_max_listado": services_oportunidades.precio_max_listado(b),
+                    "solicitada": b.solicitada is not None,
                 }
             )
         return Response(salida)
+
+
+class ResultadoBusquedaView(APIView):
+    """POST: el servicio deja el resultado de recorrer el listado de una búsqueda.
+
+    Body: {"origen": "programada"|"manual", "paginas": 3, "leidos": 70,
+    "encajan": 12, "error": "", "aviso": "", "coches": [{"tarjeta": {...},
+    "linea": "<8 campos>"|null}]}. ``linea`` solo viene si se abrió la ficha.
+    Responde con el resumen y los ``avisos`` (coches que se acaban de poder
+    comprar o que han bajado de precio): son los que hay que notificar.
+    """
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        b = BusquedaOportunidad.objects.filter(pk=pk).first()
+        if b is None:
+            return Response({"error": "No existe esa búsqueda."}, status=status.HTTP_404_NOT_FOUND)
+        r = services_oportunidades.registrar_resultado(b, request.data, usuario=request.user)
+        e = r.ejecucion
+        return Response(
+            {
+                "ejecucion_id": e.pk,
+                "estado": e.estado,
+                "leidos": e.leidos,
+                "encajan": e.encajan,
+                "revisados": e.revisados,
+                "comprables": e.comprables,
+                "nuevos_comprables": e.nuevos_comprables,
+                "avisos": r.avisos,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class EscaneoAuto1InputSerializer(serializers.Serializer):
@@ -282,6 +318,9 @@ class LatidoAuto1InputSerializer(serializers.Serializer):
     en_curso = serializers.BooleanField(required=False, default=False)
     consumir_solicitud = serializers.BooleanField(required=False, default=False)
     progreso = ProgresoSerializer(required=False)
+    busquedas_consumidas = serializers.ListField(
+        child=serializers.IntegerField(), required=False, max_length=200
+    )
     problemas = serializers.CharField(required=False, allow_blank=True, max_length=1000)
     log = serializers.ListField(
         child=serializers.CharField(max_length=300), required=False, max_length=100
@@ -289,6 +328,11 @@ class LatidoAuto1InputSerializer(serializers.Serializer):
 
 
 MAX_EVENTOS = 300
+
+
+def _fecha_ultima_busqueda_programada() -> str | None:
+    e = EjecucionBusqueda.objects.filter(origen="programada").order_by("-inicio").first()
+    return timezone.localtime(e.inicio).date().isoformat() if e else None
 
 
 class LatidoAuto1View(APIView):
@@ -337,6 +381,10 @@ class LatidoAuto1View(APIView):
             servicio.progreso_actual = servicio.progreso_total = 0
             servicio.progreso_ref = ""
 
+        if datos.get("busquedas_consumidas"):
+            BusquedaOportunidad.objects.filter(pk__in=datos["busquedas_consumidas"]).update(
+                solicitada=None
+            )
         solicitada = servicio.pasada_solicitada is not None
         if datos["consumir_solicitud"]:
             servicio.pasada_solicitada = None
@@ -364,6 +412,11 @@ class LatidoAuto1View(APIView):
                 ),
                 "pausado": servicio.pausado,
                 "detener": servicio.detener_solicitada,
+                "busquedas_pedidas": list(
+                    BusquedaOportunidad.objects.filter(activa=True, solicitada__isnull=False)
+                    .values_list("pk", flat=True)
+                ),
+                "ultima_busqueda_fecha": _fecha_ultima_busqueda_programada(),
             }
         )
 

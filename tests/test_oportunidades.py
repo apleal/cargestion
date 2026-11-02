@@ -41,7 +41,8 @@ def test_las_paginas_exigen_login(client):
 def test_la_lista_vacia_explica_que_hace_falta(web):
     html = web.get(reverse("oportunidades_lista")).content.decode()
     assert "Oportunidades de Auto1" in html and "Aún no tienes ninguna búsqueda" in html
-    assert "En preparación" in html  # honesto: el escaneo llega en otra fase
+    assert "Se pueden comprar ahora (0)" in html and "Ahora mismo no hay ningún coche comprable" in html
+    assert "todavía no se ha conectado nunca" in html  # sin servicio no se busca: se dice
     assert reverse("busqueda_nueva") in html
 
 

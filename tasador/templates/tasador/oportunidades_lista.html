@@ -10,8 +10,42 @@
   <a class="btn primary" href="{% url 'busqueda_nueva' %}">＋ Nueva búsqueda</a>
 </div>
 
-<div class="card aviso-fase">
-  <b>En preparación.</b> Ya puedes crear y ajustar tus búsquedas. El escaneo diario de los listados (07:00), la lista de oportunidades encontradas y el aviso por Telegram se activan en las siguientes fases.
+<p class="mono ayuda estado-servicio">
+  {% if sv.conexion == 'conectado' %}🟢 Servicio conectado (último aviso hace {{ sv.minutos }} min). Busca solo cada mañana sobre las 07:00 y cuando pulsas «Buscar ahora».
+  {% elif sv.conexion == 'sin_conexion' %}🔴 Servicio sin conexión desde hace {{ sv.minutos }} min: no se buscará hasta que vuelva. Revisa que esté encendido en EasyPanel.
+  {% else %}⚪ El servicio todavía no se ha conectado nunca: sin él no se busca nada (mira la pantalla de Seguimiento).{% endif %}
+</p>
+
+<div class="card">
+  <h2>🎯 Se pueden comprar ahora ({{ comprables|length }})</h2>
+  {% if comprables %}
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Coche</th><th>Búsqueda</th><th class="num">Precio</th><th>Llega al</th>
+      <th class="num">Tope 10&nbsp;%</th><th class="num">Margen</th><th class="num">Km</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for o in comprables %}
+      <tr>
+        <td><b>{{ o.nombre }}</b> <span class="ver">{{ o.referencia }}{% if o.tipo == 'particular' %} · particular{% endif %}{% if o.ubicacion %} · {{ o.ubicacion }}{% endif %}</span></td>
+        <td>{{ o.busqueda.nombre }}</td>
+        <td class="num">{{ o.precio|eur }}</td>
+        <td><span class="pill t{{ o.tier }}">{{ o.tier }}&nbsp;%</span></td>
+        <td class="num">{{ o.puja_maxima_10|eur }}</td>
+        <td class="num">{{ o.margen_10|eur }}</td>
+        <td class="num">{{ o.km|miles }}</td>
+        <td class="acciones-fila">
+          {% if o.url %}<a class="btn mini-btn primary" href="{{ o.url }}" target="_blank" rel="noopener">Abrir en Auto1 ↗</a>{% endif %}
+          {% if o.valoracion %}<a class="btn mini-btn" href="{% url 'valoracion_editar' o.valoracion.pk %}" title="Ficha de costes (ya está en el seguimiento)">🧮 Costes</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="mono ayuda">Estos coches ya están en el <a href="{% url 'seguimiento_auto1' %}">seguimiento de Auto1</a> con el precio de venta y los costes de su búsqueda.</p>
+  {% else %}
+  <p class="mono">Ahora mismo no hay ningún coche comprable. {% if not busquedas %}Crea una búsqueda para empezar.{% else %}Aquí aparecerán cuando alguno llegue al 10&nbsp;% o más; además recibirás el aviso por Telegram.{% endif %}</p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -20,7 +54,7 @@
   <div class="tw"><table>
     <thead><tr>
       <th>Coche</th><th>País</th><th class="num">Año</th><th class="num">Km de referencia</th>
-      <th class="num">Venta</th><th>Estado</th><th></th>
+      <th class="num">Venta</th><th>Estado</th><th>Última búsqueda</th><th></th>
     </tr></thead>
     <tbody>
       {% for b in busquedas %}
@@ -34,7 +68,25 @@
         <td class="num">{{ b.km_referencia|miles }} <span class="mono ayuda">± {{ b.tolerancia_km|miles }}</span></td>
         <td class="num">{{ b.precio_venta_estimado|eur }}</td>
         <td>{% if b.activa %}<span class="pill ok">Activa</span>{% else %}<span class="pill no">Pausada</span>{% endif %}</td>
+        <td class="ultima-busqueda">
+          {% if b.solicitada %}⏳ <b>Pedida</b> {{ b.solicitada|date:"H:i" }}, esperando al servicio…<br>{% endif %}
+          {% if b.ejec %}
+            {% if b.ejec.estado == 'ok' %}
+              ✅ {{ b.ejec.inicio|date:"d/m H:i" }} · {{ b.ejec.leidos }} leídos · {{ b.ejec.encajan }} encajan{% if b.ejec.comprables %} · <b>🎯 {{ b.ejec.comprables }} comprable{{ b.ejec.comprables|pluralize:"s" }}</b>{% endif %}
+              <br><a href="{% url 'busqueda_coches' b.pk %}">Ver los {{ b.n_vigentes }} coche{{ b.n_vigentes|pluralize }}</a>
+              {% if b.ejec.aviso %}<br><span class="ayuda">⚠ {{ b.ejec.aviso }}</span>{% endif %}
+            {% else %}
+              <span class="neg">❌ {{ b.ejec.inicio|date:"d/m H:i" }} · {{ b.ejec.error|truncatechars:120 }}</span>
+            {% endif %}
+          {% elif not b.solicitada %}<span class="ayuda">Todavía no se ha buscado</span>{% endif %}
+        </td>
         <td class="acciones-fila">
+          {% if b.activa %}
+          <form method="post" action="{% url 'busqueda_buscar_ahora' b.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn mini-btn primary" title="Pide al servicio que busque ahora, sin esperar a mañana">🔎 Buscar ahora</button>
+          </form>
+          {% endif %}
           <a class="btn mini-btn" href="{% url 'busqueda_editar' b.pk %}">Editar</a>
           <form method="post" action="{% url 'busqueda_alternar' b.pk %}">
             {% csrf_token %}

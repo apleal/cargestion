@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}{{ busqueda.nombre }} · Oportunidades · {{ app_name }}{% endblock %}
+{% block content %}
+<p class="mono"><a href="{% url 'oportunidades_lista' %}">← Oportunidades de Auto1</a></p>
+<h1>{{ busqueda.nombre }}</h1>
+<p class="mono ayuda">
+  {% if ejec %}Última búsqueda: {{ ejec.inicio|date:"d/m/Y H:i" }} ({{ ejec.origen }}) ·
+  {{ ejec.paginas }} página{{ ejec.paginas|pluralize }} · {{ ejec.leidos }} coches leídos · {{ ejec.encajan }} encajan · {{ ejec.revisados }} fichas revisadas.
+  {% else %}Todavía no se ha buscado.{% endif %}
+  Venta estimada {{ busqueda.precio_venta_estimado|eur }}.
+</p>
+{% if ejec and ejec.estado == 'error' %}<div class="card aviso"><b>La última búsqueda falló:</b> {{ ejec.error }}</div>{% endif %}
+
+{% if vigentes %}
+<div class="card">
+  <h2>En el listado ahora ({{ vigentes|length }})</h2>
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Coche</th><th>Tipo</th><th class="num">Precio</th><th>Veredicto</th><th class="num">Tope 10&nbsp;%</th>
+      <th class="num">Km</th><th class="num">Año</th><th class="num">CV</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for o in vigentes %}
+      <tr {% if o.tier %}class="fila-comprable"{% endif %}>
+        <td><b>{{ o.nombre }}</b> <span class="ver">{{ o.referencia }}{% if o.ubicacion %} · {{ o.ubicacion }}{% endif %}</span></td>
+        <td>{% if o.tipo == 'compra_ya' %}Compra ya{% elif o.tipo == 'particular' %}Particular{% else %}Subasta{% endif %}</td>
+        <td class="num">{{ o.precio|eur }}{% if o.expectativa %}<span class="ver">cliente espera {{ o.expectativa|eur }}</span>{% endif %}</td>
+        <td>
+          {% if o.tier %}<span class="pill t{{ o.tier }}">🎯 {{ o.tier }}&nbsp;%</span>
+          {% elif o.evaluada %}<span class="pill no">no llega al 10&nbsp;%</span>
+          {% elif o.tipo == 'compra_ya' %}<span class="ayuda">compra ya: sin calcular</span>
+          {% else %}<span class="ayuda">demasiado caro, no se revisa</span>{% endif %}
+        </td>
+        <td class="num">{{ o.puja_maxima_10|eur }}</td>
+        <td class="num">{{ o.km|miles }}</td>
+        <td class="num">{{ o.anio|default_if_none:"—" }}</td>
+        <td class="num">{{ o.cv|default_if_none:"—" }}</td>
+        <td class="acciones-fila">
+          {% if o.url %}<a class="btn mini-btn" href="{{ o.url }}" target="_blank" rel="noopener">Auto1 ↗</a>{% endif %}
+          {% if o.valoracion %}<a class="btn mini-btn" href="{% url 'valoracion_editar' o.valoracion.pk %}">🧮</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% elif ejec %}
+<div class="card"><p class="mono">La última búsqueda no encontró ningún coche que encaje (km, CV, cambio y palabras del título). Si esperabas ver alguno, revisa los filtros de la búsqueda.</p></div>
+{% endif %}
+
+{% if antiguos %}
+<details class="card">
+  <summary><b>Ya no salen en el listado ({{ antiguos|length }})</b> <span class="mono ayuda">vendidos, retirados o fuera de tus filtros</span></summary>
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th class="num">Último precio</th><th>Visto por última vez</th></tr></thead>
+    <tbody>
+      {% for o in antiguos %}
+      <tr><td>{{ o.nombre }} <span class="ver">{{ o.referencia }}</span></td><td class="num">{{ o.precio|eur }}</td><td>{{ o.ultima_vez|date:"d/m/Y H:i" }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endif %}
+
+{% if ejecuciones %}
+<details class="card">
+  <summary><b>Historial de búsquedas</b> <span class="mono ayuda">últimas {{ ejecuciones|length }}</span></summary>
+  <div class="tw"><table>
+    <thead><tr><th>Cuándo</th><th>Origen</th><th>Resultado</th><th class="num">Leídos</th><th class="num">Encajan</th><th class="num">Fichas</th><th class="num">Comprables</th></tr></thead>
+    <tbody>
+      {% for e in ejecuciones %}
+      <tr>
+        <td>{{ e.inicio|date:"d/m H:i" }}</td><td>{{ e.origen }}</td>
+        <td>{% if e.estado == 'ok' %}✅ correcta{% else %}<span class="neg">❌ {{ e.error|truncatechars:80 }}</span>{% endif %}</td>
+        <td class="num">{{ e.leidos }}</td><td class="num">{{ e.encajan }}</td><td class="num">{{ e.revisados }}</td><td class="num">{{ e.comprables }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endif %}
+{% endblock %}

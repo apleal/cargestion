@@ -319,6 +319,7 @@ def test_latido_registra_conexion_y_devuelve_si_hay_pasada_pedida(api, web):
     assert r.json() == {
         "pasada_solicitada": False, "ultima_pasada_fecha": None,
         "pausado": False, "detener": False,
+        "busquedas_pedidas": [], "ultima_busqueda_fecha": None,
     }
     srv = models.ServicioAuto1.obtener()
     assert srv.ultimo_latido is not None and srv.programada == "08:30"

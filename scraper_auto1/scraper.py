@@ -23,6 +23,8 @@ Variables de entorno (las credenciales NUNCA van en el repositorio):
     TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  opcionales: avisos por Telegram
     HEADLESS         0 = muestra el navegador (para depurar en tu PC)
     CHROME_BIN       ruta de Chrome si no está en el sitio habitual (opcional)
+    SEARCH_AT        hora diaria de las búsquedas de Oportunidades, HH:MM (def. 07:00)
+    SEARCH_MAX_PAGES páginas máximas por listado (def. 15)
     LOGIN_ATTEMPTS   intentos de login antes de dar el error (def. 3)
     LOGIN_WAIT_SECONDS  espera por intento a que entre (def. 30)
 """
@@ -45,6 +47,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+import listado
 from ajustes import caracteres_raros, limpiar_texto, limpiar_token, limpiar_url
 from horario import parse_hora, toca_pasada_programada
 
@@ -157,6 +160,8 @@ def config() -> dict:
         "email": limpiar_texto(os.environ.get("AUTO1_EMAIL", "")),
         "password": os.environ.get("AUTO1_PASSWORD", ""),
         "scan_at": os.environ.get("SCAN_AT", "08:30"),
+        "search_at": os.environ.get("SEARCH_AT", "07:00"),
+        "search_max_pages": int(os.environ.get("SEARCH_MAX_PAGES", "15")),
         "tz": os.environ.get("TZ_NAME", "Europe/Madrid"),
         "poll": float(os.environ.get("POLL_SECONDS", "30")),
         "run_once": os.environ.get("RUN_ONCE", "0") == "1",
@@ -180,9 +185,10 @@ def config() -> dict:
         problemas.append("Faltan variables de entorno: " + ", ".join(faltan) + ".")
     try:
         parse_hora(cfg["scan_at"])
+        parse_hora(cfg["search_at"])
         ZoneInfo(cfg["tz"])
     except Exception:
-        problemas.append("SCAN_AT debe ser HH:MM (p. ej. 08:30) y TZ_NAME una zona válida.")
+        problemas.append("SCAN_AT y SEARCH_AT deben ser HH:MM (p. ej. 08:30) y TZ_NAME una zona válida.")
     cfg["problemas"] = " ".join(problemas)
     return cfg
 
@@ -694,7 +700,131 @@ def notificar(cfg, resumen, avisos, vendidos_auto, errores, comprables=None) -> 
     )
 
 
-def latido(cfg, en_curso: bool = False, consumir: bool = False, progreso=None) -> dict | None:
+def busquedas_activas(cfg: dict) -> list[dict]:
+    r = requests.get(f"{cfg['app_url']}/api/auto1/busquedas/", headers=api_headers(cfg), timeout=60)
+    r.raise_for_status()
+    return r.json()
+
+
+def enviar_resultado_busqueda(cfg: dict, busqueda_id: int, cuerpo: dict) -> dict:
+    r = requests.post(
+        f"{cfg['app_url']}/api/auto1/busquedas/{busqueda_id}/resultado/",
+        headers=api_headers(cfg), json=cuerpo, timeout=120,
+    )
+    if r.status_code >= 400:
+        raise RuntimeError(f"La app rechazó el resultado ({r.status_code}): {r.text[:300]}")
+    return r.json()
+
+
+def _texto_aviso_oportunidad(a: dict) -> str:
+    etiqueta = {"15": "15 %", "12": "12 %", "10": "10 %"}.get(a["tier"], a["tier"])
+    tipo = {"particular": " · particular", "compra_ya": " · compra ya"}.get(a.get("tipo"), "")
+    margen = f" · margen hasta el tope 10 %: {_eur(a['margen_10'])}" if a.get("margen_10") else ""
+    return (
+        f"• {a['nombre']} ({a['referencia']}){tipo}\n"
+        f"  {_eur(a['precio'])} · {a.get('km') or '—'} km · llega al {etiqueta}{margen}\n"
+        f"  {a.get('url', '')}"
+    )
+
+
+def leer_una_busqueda(cfg: dict, driver, b: dict, origen: str) -> dict:
+    """Recorre el listado de UNA búsqueda, abre la ficha de los candidatos y
+    deja el resultado en la app. Devuelve su respuesta (con los avisos)."""
+    log(f"Búsqueda «{b['nombre']}»: leyendo el listado…")
+    res = listado.leer_listado(
+        driver, b["url_listado"], max_paginas=cfg["search_max_pages"], pausa=cfg["pause"], log=log
+    )
+    tarjetas = res["tarjetas"]
+    buenas, malas = listado.filtrar(tarjetas, b)
+    log(f"  {len(tarjetas)} coches leídos, {len(buenas)} encajan, {len(malas)} descartados.")
+
+    tope = b.get("precio_max_listado") or 0
+    candidatos = [
+        t for t in buenas if t["tipo"] in ("subasta", "particular") and t["precio"] <= tope
+    ]
+    log(f"  {len(candidatos)} a precio de interés (hasta {_eur(tope)}): se abre su ficha.")
+    lineas: dict[str, str] = {}
+    for i, t in enumerate(candidatos, 1):
+        try:
+            e = leer_ficha(driver, t["url"])
+        except RuntimeError:
+            login(driver, cfg)
+            e = leer_ficha(driver, t["url"])
+        if e.get("estado") == "ok":
+            d = dict(e["datos"])
+            d["referencia"] = d.get("referencia") or t["referencia"]
+            lineas[t["referencia"]] = linea_para_api(d)
+        else:
+            log(f"  {t['referencia']}: ficha sin precio utilizable ({e.get('estado')}).")
+        if i < len(candidatos):
+            time.sleep(cfg["pause"])
+
+    cuerpo = {
+        "origen": origen, "paginas": res["paginas"], "leidos": len(tarjetas),
+        "encajan": len(buenas), "aviso": res["aviso"],
+        "coches": [{"tarjeta": t, "linea": lineas.get(t["referencia"])} for t in buenas],
+    }
+    if cfg["dry_run"]:
+        log("  DRY_RUN: no se envía el resultado a la app.")
+        return {"avisos": [], "comprables": 0, "nuevos_comprables": 0}
+    return enviar_resultado_busqueda(cfg, b["id"], cuerpo)
+
+
+def _registrar_fallo_busqueda(cfg: dict, b: dict, origen: str, error: Exception) -> None:
+    if cfg["dry_run"]:
+        return
+    try:
+        enviar_resultado_busqueda(cfg, b["id"], {"origen": origen, "error": str(error)[:900], "coches": []})
+    except Exception as e2:
+        log(f"  No se pudo registrar el fallo en la app: {e2}")
+
+
+def ejecutar_busquedas(cfg: dict, ids: list[int] | None = None, origen: str = "programada") -> None:
+    """Recorre las búsquedas de Oportunidades activas (todas, o solo las pedidas)
+    y avisa por Telegram de los coches que se pueden comprar y no se habían avisado."""
+    try:
+        busquedas = [b for b in busquedas_activas(cfg) if ids is None or b["id"] in ids]
+    except requests.RequestException as e:
+        log(f"No se pudieron pedir las búsquedas a la app: {e}")
+        return
+    if not busquedas:
+        log("Oportunidades: no hay búsquedas activas.")
+        return
+    log(f"Oportunidades: {len(busquedas)} búsqueda(s) ({origen}).")
+    avisos: list[dict] = []
+    driver = None
+    try:
+        driver = crear_driver(cfg)
+        login(driver, cfg)
+        for b in busquedas:
+            try:
+                r = leer_una_busqueda(cfg, driver, b, origen)
+                avisos += r.get("avisos", [])
+                log(f"  «{b['nombre']}»: {r.get('comprables', 0)} comprable(s), "
+                    f"{r.get('nuevos_comprables', 0)} nuevo(s).")
+            except Exception as e:  # una búsqueda rota no debe parar las demás
+                log(f"  «{b['nombre']}» falló: {e}")
+                _registrar_fallo_busqueda(cfg, b, origen, e)
+    except Exception as e:
+        log(f"Oportunidades: no se pudo entrar en Auto1: {e}")
+        for b in busquedas:
+            _registrar_fallo_busqueda(cfg, b, origen, e)
+        enviar_aviso(cfg, f"⚠️ Oportunidades Auto1: no se pudo buscar ({e})")
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+    if avisos:
+        partes = [f"🎯 OPORTUNIDADES AUTO1 ({len(avisos)})"]
+        partes += [_texto_aviso_oportunidad(a) for a in avisos]
+        enviar_aviso(cfg, "\n".join(partes), {"oportunidades": avisos})
+
+
+def latido(
+    cfg, en_curso: bool = False, consumir: bool = False, progreso=None, busquedas_consumidas=None
+) -> dict | None:
     """Avisa a la app de que el servicio está vivo, le cuenta qué hace (progreso,
     problemas, últimas líneas del log) y recoge sus órdenes (pasada pedida,
     pausa, detener). Devuelve su respuesta, o None si la app no contesta."""
@@ -708,6 +838,8 @@ def latido(cfg, en_curso: bool = False, consumir: bool = False, progreso=None) -
     }
     if progreso:
         cuerpo["progreso"] = progreso
+    if busquedas_consumidas:
+        cuerpo["busquedas_consumidas"] = list(busquedas_consumidas)
     try:
         r = requests.post(
             f"{cfg['app_url']}/api/auto1/latido/",
@@ -783,11 +915,17 @@ def main() -> None:
         tz = ZoneInfo(cfg["tz"])
     except Exception:  # configuración inválida: ya consta en cfg["problemas"]
         hora, tz = parse_hora("08:30"), ZoneInfo("Europe/Madrid")
-    log(f"Servicio activo. Pasada diaria a las {cfg['scan_at']} ({cfg['tz']}) y botón de la app.")
+    log(f"Servicio activo. Pasada diaria a las {cfg['scan_at']}, búsquedas de Oportunidades a las "
+        f"{cfg['search_at']} ({cfg['tz']}) y botones de la app.")
     if cfg["problemas"]:
         log(f"Configuración incompleta, no hará pasadas: {cfg['problemas']}")
 
     intentada: date | None = None
+    busq_intentada: date | None = None
+    try:
+        hora_busq = parse_hora(cfg["search_at"])
+    except Exception:
+        hora_busq = parse_hora("07:00")
     while True:
         try:
             info = latido(cfg)
@@ -806,6 +944,20 @@ def main() -> None:
                         intentada = ahora.date()
                     log("Pasada " + ("programada." if programada else "pedida desde la app."))
                     ejecutar_pasada(cfg)
+
+                # Oportunidades de Auto1: las pedidas con «Buscar ahora» y la diaria (07:00)
+                pedidas = info.get("busquedas_pedidas") or []
+                ultima_b = (
+                    date.fromisoformat(info["ultima_busqueda_fecha"])
+                    if info.get("ultima_busqueda_fecha")
+                    else None
+                )
+                if pedidas:
+                    latido(cfg, busquedas_consumidas=pedidas)
+                    ejecutar_busquedas(cfg, ids=pedidas, origen="manual")
+                elif toca_pasada_programada(ahora, hora_busq, ultima_b, busq_intentada):
+                    busq_intentada = ahora.date()
+                    ejecutar_busquedas(cfg, origen="programada")
         except Exception as e:  # nada debe tumbar el servicio
             log(f"Error inesperado en el bucle principal: {e}")
         time.sleep(cfg["poll"])

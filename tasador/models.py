@@ -704,6 +704,10 @@ class BusquedaOportunidad(models.Model):
     coste_otros = models.DecimalField(**DEC, default=Decimal("0"))
 
     activa = models.BooleanField(default=True)
+    solicitada = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Pedida con «Buscar ahora»; el servicio la recoge en cuanto puede.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -737,3 +741,101 @@ class BusquedaOportunidad(models.Model):
         self.coste_tapiceria = p.tapiceria
         self.coste_tintado = p.tintado
         self.coste_otros = Decimal("0")
+
+    @property
+    def ultima_ejecucion(self):
+        return self.ejecuciones.first()
+
+
+class EjecucionBusqueda(models.Model):
+    """Una vez que el servicio ha recorrido el listado de una búsqueda: sirve para
+    saber CUÁNDO se buscó, QUÉ se leyó y si falló."""
+
+    class Estado(models.TextChoices):
+        OK = "ok", "Correcta"
+        ERROR = "error", "Con error"
+
+    busqueda = models.ForeignKey(
+        BusquedaOportunidad, on_delete=models.CASCADE, related_name="ejecuciones"
+    )
+    inicio = models.DateTimeField(default=timezone.now)
+    estado = models.CharField(max_length=8, choices=Estado.choices, default=Estado.OK)
+    origen = models.CharField(max_length=12, default="programada")
+    paginas = models.PositiveSmallIntegerField(default=0)
+    leidos = models.PositiveIntegerField("coches leídos", default=0)
+    encajan = models.PositiveIntegerField("encajan con la búsqueda", default=0)
+    revisados = models.PositiveIntegerField("fichas revisadas", default=0)
+    comprables = models.PositiveIntegerField(default=0)
+    nuevos_comprables = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+    aviso = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-inicio", "-id"]
+        verbose_name = "ejecución de búsqueda"
+        verbose_name_plural = "ejecuciones de búsqueda"
+
+    def __str__(self) -> str:
+        return f"{self.busqueda} · {self.inicio:%d/%m %H:%M}"
+
+
+class Oportunidad(models.Model):
+    """Un coche del listado de una búsqueda que encaja con el coche buscado.
+
+    Se registran todos los que encajan (para llevar el control); solo los que
+    se pueden comprar con la rentabilidad mínima son «comprables» y avisan."""
+
+    busqueda = models.ForeignKey(
+        BusquedaOportunidad, on_delete=models.CASCADE, related_name="oportunidades"
+    )
+    referencia = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=160)
+    url = models.URLField(max_length=500, blank=True)
+    tipo = models.CharField(
+        max_length=12, blank=True, help_text="subasta · particular · compra_ya"
+    )
+    precio = models.DecimalField(**DEC, help_text="Puja mínima o precio de compra ya.")
+    expectativa = models.DecimalField(**DEC, null=True, blank=True)
+    iva_anuncio = models.DecimalField(**DEC, null=True, blank=True)
+    km = models.PositiveIntegerField(null=True, blank=True)
+    anio = models.PositiveSmallIntegerField(null=True, blank=True)
+    cv = models.PositiveSmallIntegerField(null=True, blank=True)
+    cambio = models.CharField(max_length=12, blank=True)
+    ubicacion = models.CharField(max_length=80, blank=True)
+
+    evaluada = models.BooleanField(
+        default=False, help_text="Se ha abierto la ficha y calculado con el IVA real."
+    )
+    tier = models.CharField(max_length=2, blank=True, help_text="15 · 12 · 10 · vacío = no llega")
+    puja_maxima_10 = models.DecimalField(**DEC, null=True, blank=True)
+    margen_10 = models.DecimalField(**DEC, null=True, blank=True)
+    rentabilidad = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        help_text="Rentabilidad sobre el coste total al precio actual.",
+    )
+    beneficio = models.DecimalField(**DEC, null=True, blank=True)
+
+    precio_avisado = models.DecimalField(**DEC, null=True, blank=True)
+    valoracion = models.ForeignKey(
+        "Valoracion", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    ultima_ejecucion = models.ForeignKey(
+        EjecucionBusqueda, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    primera_vez = models.DateTimeField(default=timezone.now)
+    ultima_vez = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["busqueda", "precio"]
+        constraints = [
+            models.UniqueConstraint(fields=["busqueda", "referencia"], name="oportunidad_unica")
+        ]
+        verbose_name = "oportunidad"
+        verbose_name_plural = "oportunidades"
+
+    def __str__(self) -> str:
+        return f"{self.referencia} · {self.nombre}"
+
+    @property
+    def comprable(self) -> bool:
+        return bool(self.tier)

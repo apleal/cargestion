@@ -5,6 +5,7 @@ from . import api_views
 urlpatterns = [
     path("auto1/seguimiento/", api_views.SeguimientoAuto1View.as_view(), name="api_auto1_seguimiento"),
     path("auto1/busquedas/", api_views.BusquedasOportunidadView.as_view(), name="api_auto1_busquedas"),
+    path("auto1/busquedas/<int:pk>/resultado/", api_views.ResultadoBusquedaView.as_view(), name="api_auto1_busqueda_resultado"),
     path("auto1/escaneo/", api_views.RegistrarEscaneoAuto1View.as_view(), name="api_auto1_escaneo"),
     path("auto1/pasada/", api_views.RegistrarPasadaAuto1View.as_view(), name="api_auto1_pasada"),
     path("auto1/latido/", api_views.LatidoAuto1View.as_view(), name="api_auto1_latido"),

@@ -280,3 +280,8 @@ table.rejilla.sala td{padding:9px 12px}
 }
 
 .aviso-fase{background:var(--accent-soft);border-color:var(--accent);font-size:.9rem}
+
+.tw td.num{white-space:nowrap}
+.ultima-busqueda{font-size:.85rem;min-width:200px}
+.fila-comprable{background:var(--good-soft)}
+.estado-servicio{margin:10px 0}
