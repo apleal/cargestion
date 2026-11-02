@@ -217,9 +217,10 @@ def crear_driver(cfg: dict):
         "--window-size=1366,900",
         "--lang=es-ES",
         "--disable-blink-features=AutomationControlled",
+        "--log-level=3",  # sin el ruido de Chrome en la consola (USB, actualizador…)
     ):
         opts.add_argument(arg)
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     opts.add_experimental_option("useAutomationExtension", False)
     if cfg["headless"]:
         # El modo sin ventana se anuncia como "HeadlessChrome"; se disfraza de Chrome normal.
