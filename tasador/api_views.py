@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import EventoAuto1, PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
+from .models import BusquedaOportunidad, EventoAuto1, PasadaAuto1, Proveedor, ServicioAuto1, Valoracion
 from .parser import parsear_linea_auto1
 
 
@@ -56,6 +56,38 @@ class SeguimientoAuto1View(APIView):
                         if v.r_puja_maxima_principal is not None
                         else None
                     ),
+                }
+            )
+        return Response(salida)
+
+
+class BusquedasOportunidadView(APIView):
+    """GET: búsquedas de oportunidades activas que el servicio debe recorrer.
+
+    Trae lo que hace falta para leer y filtrar el listado (URL, rango de km,
+    CV, cambio, palabras del título). El cálculo con los costes se hace aquí,
+    en la app, no en el servicio.
+    """
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        salida = []
+        for b in BusquedaOportunidad.objects.filter(activa=True):
+            km_min, km_max = b.rango_km
+            salida.append(
+                {
+                    "id": b.pk,
+                    "nombre": b.nombre,
+                    "pais": b.pais,
+                    "url_listado": b.url_listado,
+                    "km_min": km_min,
+                    "km_max": km_max,
+                    "potencia_cv": b.potencia_cv,
+                    "tolerancia_cv": b.tolerancia_cv,
+                    "cambio": b.cambio,
+                    "palabras_titulo": b.palabras_titulo,
                 }
             )
         return Response(salida)

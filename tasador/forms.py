@@ -145,7 +145,7 @@ class BusquedaOportunidadForm(forms.ModelForm):
         model = models.BusquedaOportunidad
         fields = [
             "url_listado", "precio_venta_estimado", "tolerancia_km", "palabras_titulo",
-            "estado_carroceria", "piezas_pintura",
+            "potencia_cv", "tolerancia_cv", "estado_carroceria", "piezas_pintura",
             "marca", "modelo", "version", "anio", "km_referencia", "combustible", "cambio",
             "coste_alberto", "coste_gasolina", "coste_pintura_por_pieza", "coste_garantia",
             "coste_mecanica", "coste_cambio_titularidad", "coste_transporte", "coste_itv",
@@ -156,6 +156,7 @@ class BusquedaOportunidadForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.creando = self.instance.pk is None
+        self.fields["tolerancia_cv"].required = False
         if self.creando:
             # el coche de referencia sale de la línea; los costes, de los parámetros
             ocultos = (*self.CAMPOS_REFERENCIA, "piezas_pintura", "activa") + tuple(
@@ -180,6 +181,10 @@ class BusquedaOportunidadForm(forms.ModelForm):
                 "(la que contiene /merchant/cars)."
             )
         return url
+
+    def clean_tolerancia_cv(self):
+        tol = self.cleaned_data.get("tolerancia_cv")
+        return 5 if tol is None else tol
 
     def clean_precio_venta_estimado(self):
         precio = self.cleaned_data["precio_venta_estimado"]

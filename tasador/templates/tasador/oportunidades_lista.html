@@ -27,7 +27,7 @@
       <tr {% if not b.activa %}style="opacity:.6"{% endif %}>
         <td>
           <a href="{% url 'busqueda_editar' b.pk %}"><b>{{ b.marca }} {{ b.modelo }}</b></a>
-          <span class="ver">{{ b.version }}{% if b.palabras_titulo %} · título con «{{ b.palabras_titulo }}»{% endif %}</span>
+          <span class="ver">{{ b.version }}{% if b.potencia_cv %} · {{ b.potencia_cv }} CV{% endif %}{% if b.cambio %} · {{ b.get_cambio_display }}{% endif %}{% if b.palabras_titulo %} · título con «{{ b.palabras_titulo }}»{% endif %}</span>
         </td>
         <td>{{ b.get_pais_display }}</td>
         <td class="num">{{ b.anio|default_if_none:"—" }}</td>

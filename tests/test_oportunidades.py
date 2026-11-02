@@ -200,3 +200,40 @@ def test_eliminar_solo_por_post(web):
 
 def test_el_menu_enlaza_con_oportunidades(web):
     assert reverse("oportunidades_lista") in web.get(reverse("panel")).content.decode()
+
+
+def test_se_guarda_la_potencia_con_su_tolerancia(web):
+    _crear(web, potencia_cv="163", tolerancia_cv="8")
+    b = models.BusquedaOportunidad.objects.get()
+    assert (b.potencia_cv, b.tolerancia_cv) == (163, 8)
+    assert "163 CV" in web.get(reverse("oportunidades_lista")).content.decode()
+
+
+def test_la_potencia_es_opcional(web):
+    _crear(web)
+    b = models.BusquedaOportunidad.objects.get()
+    assert b.potencia_cv is None and b.tolerancia_cv == 5
+
+
+def test_api_de_busquedas_solo_con_token_y_solo_activas(web):
+    from rest_framework.authtoken.models import Token
+    from rest_framework.test import APIClient
+
+    _crear(web, potencia_cv="163")
+    _crear(web, linea_plugin="Audi A1 1.4 TFSI\t14000\t60,5\tAB99999\t2018\t60000\tGasolina\tAutomático")
+    pausada = models.BusquedaOportunidad.objects.get(marca="Audi")
+    pausada.activa = False
+    pausada.save()
+
+    assert APIClient().get(reverse("api_auto1_busquedas")).status_code == 401
+
+    user = get_user_model().objects.create_user("scraper-test")
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f"Token {Token.objects.create(user=user).key}")
+    datos = api.get(reverse("api_auto1_busquedas")).json()
+    assert len(datos) == 1
+    b = datos[0]
+    assert b["nombre"] == "Seat Ibiza 1.0 TSI FR Crono" and b["url_listado"] == URL
+    assert (b["km_min"], b["km_max"]) == (41774, 61774)
+    assert (b["potencia_cv"], b["tolerancia_cv"], b["cambio"]) == (163, 5, "manual")
+    assert b["palabras_titulo"] == ""

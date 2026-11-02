@@ -43,8 +43,18 @@
       <label for="{{ form.palabras_titulo.id_for_label }}">{{ form.palabras_titulo.label|capfirst }}</label>
       {{ form.palabras_titulo }}
     </p>
+    <p>
+      <label for="{{ form.potencia_cv.id_for_label }}">Potencia (CV)</label>
+      {{ form.potencia_cv }}
+      {% if form.potencia_cv.errors %}<span class="neg">{{ form.potencia_cv.errors.0 }}</span>{% endif %}
+    </p>
+    <p>
+      <label for="{{ form.tolerancia_cv.id_for_label }}">Tolerancia de CV (±)</label>
+      {{ form.tolerancia_cv }}
+      {% if form.tolerancia_cv.errors %}<span class="neg">{{ form.tolerancia_cv.errors.0 }}</span>{% endif %}
+    </p>
   </div>
-  <p class="mono ayuda">{{ form.tolerancia_km.help_text }} {{ form.palabras_titulo.help_text }}</p>
+  <p class="mono ayuda">{{ form.tolerancia_km.help_text }} {{ form.potencia_cv.help_text }} El cambio (manual/automático) se toma del coche de referencia. {{ form.palabras_titulo.help_text }}</p>
 
   {% if busqueda %}
   <details class="card" style="margin-top:14px">

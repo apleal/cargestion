@@ -677,6 +677,14 @@ class BusquedaOportunidad(models.Model):
         "tolerancia de km", default=10000,
         help_text="Solo cuentan coches con km entre referencia − tolerancia y referencia + tolerancia.",
     )
+    potencia_cv = models.PositiveSmallIntegerField(
+        "potencia (CV)", null=True, blank=True,
+        help_text="Opcional: CV del coche que buscas. Vacío = no se filtra por potencia.",
+    )
+    tolerancia_cv = models.PositiveSmallIntegerField(
+        "tolerancia de CV", default=5,
+        help_text="Se aceptan coches con CV entre potencia − tolerancia y potencia + tolerancia.",
+    )
 
     precio_venta_estimado = models.DecimalField(**DEC)
     estado_carroceria = models.ForeignKey(

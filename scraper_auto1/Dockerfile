@@ -13,6 +13,6 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY scraper.py horario.py ajustes.py ./
+COPY scraper.py horario.py ajustes.py listado.py ./
 
 CMD ["python", "-u", "scraper.py"]
