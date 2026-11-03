@@ -6,6 +6,8 @@
 <h1>Tasación de mercado</h1>
 <p class="mono ayuda">{{ t.nombre }} · {{ t.km_referencia|miles }} km · {{ t.creada|date:"d/m/Y H:i" }} · {{ t.n_pegados }} anuncios pegados → {{ t.n_comparables }} parecidos → {{ t.n_usados }} usados</p>
 
+{% if t.nota %}<div class="card aviso">ℹ️ {{ t.nota }}</div>{% endif %}
+{% if t.url_busqueda %}<p class="mono ayuda">Búsqueda de coches.net usada: <a href="{{ t.url_busqueda }}" target="_blank" rel="noopener">abrir ↗</a>{% if t.vehiculo_id %} · queda guardada para este coche{% endif %}</p>{% endif %}
 {% if t.error %}
 <div class="card aviso"><b>No se ha podido calcular un precio.</b> {{ t.error }}</div>
 {% else %}

@@ -394,6 +394,10 @@ class Vehiculo(models.Model):
         help_text="Anuncio de coches.net que usas para saber a cuánto vender este coche; "
         "se guarda para no tener que buscarlo otra vez y vale para todas sus tasaciones.",
     )
+    url_busqueda_cochesnet = models.URLField(
+        "tu búsqueda de coches.net", max_length=1000, blank=True,
+        help_text="La búsqueda de coches.net que prefieres para tasar este coche (se guarda sola al tasar).",
+    )
     mds_modelo = models.PositiveSmallIntegerField(
         "MDS modelo", null=True, blank=True,
         help_text="Market Days Supply: coches iguales en venta ÷ ventas medias/día "
@@ -896,6 +900,10 @@ class TasacionMercado(models.Model):
         default=False, help_text="La bajada por km sale de los anuncios (si no, es una estimación general)."
     )
 
+    url_busqueda = models.URLField(
+        max_length=1000, blank=True, help_text="La búsqueda de coches.net de la que salieron los anuncios."
+    )
+    nota = models.TextField(blank=True, help_text="Algo que conviene saber de cómo se ha calculado.")
     ia_usada = models.BooleanField(default=False)
     ia_modelo = models.CharField(max_length=60, blank=True)
     ia_confianza = models.CharField(max_length=10, blank=True)

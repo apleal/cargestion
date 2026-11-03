@@ -24,7 +24,7 @@ import statistics
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
-from urllib.parse import urlencode
+from urllib.parse import urldefrag, urlencode, urlparse
 
 from django.utils import timezone
 
@@ -54,7 +54,7 @@ SNIPPET_JS = (
     "leer();scrollTo(0,0);const s=JSON.stringify({origen:'coches.net',url:location.href,anuncios:[...M.values()]});"
     "const APP='__APP__';"
     "if(/^https?:\\/\\//.test(APP)){location.href=APP+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
-    "try{await navigator.clipboard.writeText(s);alert(M.size+' anuncios copiados. Pégalos en PujaAuto.')}"
+    "try{await navigator.clipboard.writeText(s);alert(M.size+' anuncios copiados, pero este marcador es antiguo y no sabe llevarlos a PujaAuto. Bórralo e instala el nuevo desde «🧮 Tasar» del coche. Mientras tanto, pégalos en «O pega los anuncios a mano».')}"
     "catch(e){prompt(M.size+' anuncios: copia este texto (Ctrl+C) y pégalo en PujaAuto',s)}})();"
 )
 
@@ -162,6 +162,35 @@ def interpretar_pegado(texto: str) -> list[dict]:
     return list(anuncios.values())
 
 
+def url_valida_cochesnet(url) -> str:
+    """La dirección si es una búsqueda de coches.net (https), sin el # ni espacios; si no, vacío."""
+    url = urldefrag(str(url or "").strip())[0]
+    p = urlparse(url)
+    if p.scheme != "https" or not (p.hostname or "").lower().endswith("coches.net") or len(url) > 1000:
+        return ""
+    return url
+
+
+def url_del_pegado(texto: str) -> str:
+    """La búsqueda de coches.net que el marcador anota en lo que pega (la que se estaba mirando)."""
+    decodificador = json.JSONDecoder()
+    i, texto = 0, (texto or "").strip()
+    while i < len(texto):
+        if texto[i] != "{":
+            i += 1
+            continue
+        try:
+            obj, fin = decodificador.raw_decode(texto, i)
+        except ValueError:
+            i += 1
+            continue
+        i = fin
+        url = url_valida_cochesnet(obj.get("url")) if isinstance(obj, dict) else ""
+        if url:
+            return url
+    return ""
+
+
 def _entero(x) -> int | None:
     try:
         return int(x) if x is not None and x != "" else None
@@ -202,10 +231,34 @@ MARGEN_KM = 60000
 MARGEN_ANIO = 1
 
 
-def filtrar_comparables(anuncios: list[dict], b: BusquedaOportunidad) -> tuple[list[dict], list[dict]]:
-    """Los anuncios que se parecen al coche de la búsqueda y los que no (con el motivo)."""
+def _categoria_combustible(texto: str) -> str:
+    bajo = (texto or "").lower()
+    for clave, textos in _COMBUSTIBLE_TEXTOS.items():
+        if clave != "phev" and bajo.startswith(textos):
+            return clave
+    return ""
+
+
+def filtrar_comparables(
+    anuncios: list[dict], b: BusquedaOportunidad, notas: list[str] | None = None
+) -> tuple[list[dict], list[dict]]:
+    """Los anuncios que se parecen al coche de la búsqueda y los que no (con el motivo).
+
+    Si casi todos los anuncios son de un combustible distinto al que figura para el coche, se
+    entiende que la persona ha buscado a propósito en coches.net (p. ej. un híbrido ligero que la
+    app ve como gasolina) y se respeta su búsqueda: no se descarta por combustible."""
     buenos, malos = [], []
     textos = _COMBUSTIBLE_TEXTOS.get(b.combustible or "", ())
+    categorias = [c for c in (_categoria_combustible(a["combustible"]) for a in anuncios) if c]
+    if textos and categorias:
+        dominante = max(set(categorias), key=categorias.count)
+        if categorias.count(dominante) / len(categorias) >= 0.7 and _categoria_combustible(b.get_combustible_display()) != dominante:
+            textos = ()
+            if notas is not None:
+                notas.append(
+                    f"Tu búsqueda de coches.net es de combustible «{dominante}» y el coche figura como "
+                    f"«{b.get_combustible_display().lower()}»: se han usado los anuncios de tu búsqueda."
+                )
     for a in anuncios:
         motivo = ""
         if a["km"] is None:
@@ -411,8 +464,11 @@ def tasar(
         t.save()
         return t
     t.n_pegados = len(pegados)
+    t.url_busqueda = url_del_pegado(texto_pegado)
+    notas: list[str] = []
 
-    comparables, excluidos = filtrar_comparables(pegados, b)
+    comparables, excluidos = filtrar_comparables(pegados, b, notas)
+    t.nota = " ".join(notas)
     t.n_comparables = len(comparables)
 
     if usar_ia and len(comparables) >= MIN_COMPARABLES:
@@ -448,4 +504,8 @@ def tasar(
         r["precio_sugerido"], r["depreciacion_1000km"], r["pendiente_propia"],
     )
     t.save()
+    if t.url_busqueda and t.vehiculo_id:
+        # la última búsqueda buena de este coche es la que se abrirá la próxima vez
+        t.vehiculo.url_busqueda_cochesnet = t.url_busqueda
+        t.vehiculo.save(update_fields=["url_busqueda_cochesnet"])
     return t

@@ -276,7 +276,8 @@ def test_si_la_ia_falla_la_tasacion_sigue_con_estadistica(busqueda):
 
 
 def test_tasar_sin_anuncios_comparables_guarda_el_motivo(busqueda):
-    distintos = [anuncio(i, 100000, combustible="Diesel") for i in range(8)]
+    # mezcla de combustibles distintos al del coche: no hay un «combustible de tu búsqueda» que respetar
+    distintos = [anuncio(i, 100000, combustible="Diesel" if i % 2 else "Híbrido") for i in range(8)]
     t = tm.tasar(busqueda, pegado(distintos), usar_ia=False)
     assert not t.valida and "al menos 4" in t.error and t.n_pegados == 8 and t.n_comparables == 0
     assert len(t.excluidos) == 8
@@ -566,3 +567,104 @@ def test_el_descuento_invalido_al_enviar_no_tasa(web2, coche):
     web2.get(reverse("valoracion_tasar", args=[coche.pk]))
     r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "abc"}, follow=True)
     assert "entre 0 y 30" in r.content.decode() and models.TasacionMercado.objects.count() == 0
+
+
+# ================================================================== tu propia búsqueda de coches.net
+URL_PROPIA = "https://www.coches.net/ford/puma/segunda-mano/?MakeIds%5B0%5D=15&ModelIds%5B0%5D=365&MinYear=2020&MaxKms=128549"
+
+
+def test_solo_se_aceptan_busquedas_de_coches_net_https():
+    ok = tm.url_valida_cochesnet(URL_PROPIA + "#algo")
+    assert ok == URL_PROPIA  # sin el #
+    for mala in ("http://www.coches.net/x", "https://www.otra.com/x", "https://coches.net.malo.com/x", "", None, "x" * 1100):
+        assert tm.url_valida_cochesnet(mala) == ""
+
+
+def test_lee_la_busqueda_que_el_marcador_anota_en_lo_pegado():
+    assert tm.url_del_pegado(pegado(COMPARABLES, url=URL_PROPIA)) == URL_PROPIA
+    assert tm.url_del_pegado(pegado(COMPARABLES, url="https://www.malo.com/x")) == ""
+    assert tm.url_del_pegado("no es json") == ""
+
+
+def _hibridos(n=10, **extra):
+    return [anuncio(i, 80000 + i * 4000, combustible="Híbrido", **extra) for i in range(n)]
+
+
+def test_si_buscas_otro_combustible_a_proposito_se_respeta_tu_busqueda(busqueda):
+    notas = []
+    buenos, malos = tm.filtrar_comparables(_hibridos(), busqueda, notas)  # el coche figura como gasolina
+    assert len(buenos) == 10 and malos == []
+    assert len(notas) == 1 and "hibrido" in notas[0] and "gasolina" in notas[0]
+
+
+def test_con_combustibles_mezclados_se_sigue_filtrando_por_el_del_coche(busqueda):
+    mezcla = [anuncio(i, 90000) for i in range(5)] + _hibridos(5)
+    notas = []
+    buenos, malos = tm.filtrar_comparables(mezcla, busqueda, notas)
+    assert len(buenos) == 5 and len(malos) == 5 and notas == []
+    assert all("otro combustible" in m["motivo"] for m in malos)
+
+
+def test_sin_diferencia_de_combustible_no_hay_nota(busqueda):
+    notas = []
+    tm.filtrar_comparables(COMPARABLES, busqueda, notas)
+    assert notas == []
+
+
+def test_tasar_con_tu_busqueda_de_otro_combustible_da_precio_y_lo_explica(coche):
+    t = tm.tasar(coche, pegado(_hibridos(10), url=URL_PROPIA), usar_ia=False)
+    assert t.valida and t.n_comparables == 10 and "tu búsqueda" in t.nota.lower() and t.url_busqueda == URL_PROPIA
+
+
+def test_la_ultima_busqueda_usada_queda_guardada_para_ese_coche(coche):
+    assert coche.vehiculo.url_busqueda_cochesnet == ""
+    tm.tasar(coche, pegado(COMPARABLES, url=URL_PROPIA), usar_ia=False)
+    coche.vehiculo.refresh_from_db()
+    assert coche.vehiculo.url_busqueda_cochesnet == URL_PROPIA
+
+
+def test_una_tasacion_fallida_no_pisa_la_busqueda_guardada(coche):
+    coche.vehiculo.url_busqueda_cochesnet = URL_PROPIA
+    coche.vehiculo.save()
+    tm.tasar(coche, pegado(COMPARABLES[:2], url="https://www.coches.net/otra/"), usar_ia=False)  # muy pocos anuncios
+    coche.vehiculo.refresh_from_db()
+    assert coche.vehiculo.url_busqueda_cochesnet == URL_PROPIA
+
+
+def test_la_pantalla_abre_tu_busqueda_guardada_en_vez_de_la_sugerida(web2, coche):
+    coche.vehiculo.url_busqueda_cochesnet = URL_PROPIA
+    coche.vehiculo.save()
+    html = web2.get(reverse("valoracion_tasar", args=[coche.pk])).content.decode()
+    assert 'href="' + URL_PROPIA.replace("&", "&amp;") + '"' in html and "tu búsqueda guardada" in html
+    assert "Volver a la búsqueda sugerida" in html
+    coche.vehiculo.url_busqueda_cochesnet = ""
+    coche.vehiculo.save()
+    html = web2.get(reverse("valoracion_tasar", args=[coche.pk])).content.decode()
+    assert "MinYear=2018" in html and "Volver a la búsqueda sugerida" not in html
+
+
+def test_guardar_quitar_y_rechazar_la_url(web2, coche):
+    url = reverse("valoracion_url_busqueda", args=[coche.pk])
+    web2.post(url, {"url": URL_PROPIA})
+    coche.vehiculo.refresh_from_db()
+    assert coche.vehiculo.url_busqueda_cochesnet == URL_PROPIA
+    r = web2.post(url, {"url": "https://www.malo.com/x"}, follow=True)
+    coche.vehiculo.refresh_from_db()
+    assert coche.vehiculo.url_busqueda_cochesnet == URL_PROPIA and "no parece una búsqueda de coches.net" in r.content.decode()
+    web2.post(url, {"url": ""})
+    coche.vehiculo.refresh_from_db()
+    assert coche.vehiculo.url_busqueda_cochesnet == ""
+    assert web2.get(url).status_code == 405
+
+
+def test_el_resultado_enseña_la_nota_y_la_busqueda_usada(web2, coche):
+    t = tm.tasar(coche, pegado(_hibridos(10), url=URL_PROPIA), usar_ia=False)
+    html = web2.get(reverse("tasacion_detalle", args=[t.pk])).content.decode()
+    assert "ℹ️" in html and "se han usado los anuncios de tu búsqueda" in html
+    assert "Búsqueda de coches.net usada" in html and "queda guardada para este coche" in html
+
+
+def test_el_marcador_antiguo_sin_direccion_dice_que_hay_que_reinstalarlo():
+    js = tm.SNIPPET_JS
+    assert "este marcador es antiguo" in js and "Bórralo e instala el nuevo" in js and "O pega los anuncios a mano" in js
+    assert "\n" not in js

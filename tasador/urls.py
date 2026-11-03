@@ -11,6 +11,7 @@ urlpatterns = [
     path("tasar/recibir/", oportunidades.tasar_recibir, name="tasar_recibir"),
     path("tasar/enviar/", oportunidades.tasar_enviar, name="tasar_enviar"),
     path("valoraciones/<int:pk>/tasar/", oportunidades.valoracion_tasar, name="valoracion_tasar"),
+    path("valoraciones/<int:pk>/tasar/url/", oportunidades.valoracion_url_busqueda, name="valoracion_url_busqueda"),
     path("valoraciones/<int:pk>/tasar/recibir/", oportunidades.valoracion_tasar_recibir, name="valoracion_tasar_recibir"),
     path("oportunidades/tasaciones/<int:pk>/", oportunidades.tasacion_detalle, name="tasacion_detalle"),
     path("oportunidades/tasaciones/<int:pk>/aplicar/", oportunidades.tasacion_aplicar, name="tasacion_aplicar"),

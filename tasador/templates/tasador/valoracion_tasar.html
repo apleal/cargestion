@@ -11,10 +11,25 @@
   <p class="mono ayuda">El agente mira anuncios reales de coches.net de coches como este, quita los que no son comparables, ajusta por km y te dice el precio de venta. <b>Solo sugiere</b>: no cambia nada hasta que pulses «Aplicar».</p>
   <ol style="line-height:1.9">
     <li><a id="abrir-cochesnet" class="btn primary" href="{{ url_cochesnet }}" target="_blank" rel="noopener">1 · Abrir coches.net con este coche ↗</a>
-      <span class="mono ayuda">ya filtrado por marca, modelo, año y km</span></li>
+      <span class="mono ayuda">{% if url_guardada %}con <b>tu búsqueda guardada</b>{% else %}ya filtrado por marca, modelo, año y km{% endif %}</span></li>
     <li>En esa pestaña, pulsa tu marcador <b>📋 Copiar anuncios de coches.net</b>. Baja solo la página y, al terminar, <b>te trae aquí el resultado</b>.</li>
     <li>Verás el precio sugerido y pulsas «Aplicar»: la columna Venta de la rejilla se actualiza.</li>
   </ol>
+
+  <details {% if url_guardada %}open{% endif %} style="margin-bottom:10px">
+    <summary><b>Mi búsqueda de coches.net</b> <span class="mono ayuda">{% if url_guardada %}(guardada){% else %}(opcional){% endif %}</span></summary>
+    <p class="mono ayuda">Si tu búsqueda en coches.net es mejor que la que sugiere la app (otro combustible, otros filtros…), pégala aquí y será la que se abra siempre para este coche. Además, <b>cada vez que tasas se guarda sola</b> la última búsqueda que usaste.</p>
+    <form method="post" action="{% url 'valoracion_url_busqueda' v.pk %}" style="display:flex;gap:6px;flex-wrap:wrap">
+      {% csrf_token %}
+      <input type="url" name="url" value="{{ url_guardada }}" placeholder="https://www.coches.net/…" style="flex:1;min-width:260px">
+      <button type="submit" class="btn mini-btn primary">Guardar</button>
+    </form>
+    {% if url_guardada %}
+    <form method="post" action="{% url 'valoracion_url_busqueda' v.pk %}" style="margin-top:6px">{% csrf_token %}
+      <input type="hidden" name="url" value=""><button type="submit" class="btn mini-btn">Volver a la búsqueda sugerida</button>
+    </form>
+    {% endif %}
+  </details>
 
   <details>
     <summary><b>¿No tienes el marcador? Instálalo (una sola vez)</b></summary>

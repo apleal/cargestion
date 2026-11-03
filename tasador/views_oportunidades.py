@@ -269,12 +269,14 @@ def valoracion_tasar(request, pk):
         return redirect("tasacion_detalle", pk=t.pk)
     _recordar_destino(request, "valoracion", v.pk)
     ref = tasacion_mercado.referencia_de_valoracion(v)
+    url_sugerida = tasacion_mercado.url_busqueda_cochesnet(ref, v.pk)
     return render(
         request,
         "tasador/valoracion_tasar.html",
         {
             "v": v, "ref": ref,
-            "url_cochesnet": tasacion_mercado.url_busqueda_cochesnet(ref, v.pk),
+            "url_cochesnet": v.vehiculo.url_busqueda_cochesnet or url_sugerida,
+            "url_guardada": v.vehiculo.url_busqueda_cochesnet,
             "snippet_js": tasacion_mercado.SNIPPET_JS,
             "ia_disponible": tasacion_mercado.clave_disponible(),
             "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
@@ -338,3 +340,23 @@ def tasar_enviar(request):
     usar_ia = request.POST.get("usar_ia") == "on" and tasacion_mercado.clave_disponible()
     t = tasacion_mercado.tasar(destino, anuncios, descuento_pct=descuento, usuario=request.user, usar_ia=usar_ia)
     return redirect("tasacion_detalle", pk=t.pk)
+
+
+@login_required
+@require_POST
+def valoracion_url_busqueda(request, pk):
+    """Guarda (o quita) la búsqueda de coches.net que la persona prefiere para tasar este coche."""
+    v = get_object_or_404(models.Valoracion.objects.select_related("vehiculo"), pk=pk)
+    entrada = request.POST.get("url", "").strip()
+    if not entrada:
+        v.vehiculo.url_busqueda_cochesnet = ""
+        messages.success(request, "Listo: se usará la búsqueda sugerida por la app.")
+    else:
+        url = tasacion_mercado.url_valida_cochesnet(entrada)
+        if not url:
+            messages.error(request, "Eso no parece una búsqueda de coches.net (debe empezar por https://www.coches.net/).")
+            return redirect("valoracion_tasar", pk=v.pk)
+        v.vehiculo.url_busqueda_cochesnet = url
+        messages.success(request, "Guardada: «Abrir coches.net» usará tu búsqueda para este coche.")
+    v.vehiculo.save(update_fields=["url_busqueda_cochesnet"])
+    return redirect("valoracion_tasar", pk=v.pk)
