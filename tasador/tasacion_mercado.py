@@ -34,7 +34,9 @@ log = logging.getLogger(__name__)
 
 # Marcador que se ejecuta EN el navegador de la persona, sobre la página de resultados
 # de coches.net: baja la página poco a poco (los anuncios cargan al desplazarse), recoge
-# los anuncios y los copia al portapapeles como JSON. Una sola línea, apta para marcador.
+# los anuncios y los lleva a la app (que recuerda de qué coche es la tasación abierta). El
+# texto ``__APP__`` se sustituye en el navegador por la dirección de la app al instalarlo.
+# Solo si no se ha sustituido copia los anuncios al portapapeles. Una sola línea.
 SNIPPET_JS = (
     "(async()=>{const M=new Map();const num=t=>{const d=(t||'').replace(/\\D/g,'');return d?parseInt(d,10):null};"
     "const leer=()=>document.querySelectorAll('.mt-CardAd-infoContainer').forEach(c=>{"
@@ -50,8 +52,8 @@ SNIPPET_JS = (
     "km:km,anio:anio,cv:cv,combustible:comb,provincia:prov,profesional:i.includes('profesional'),garantia:i.includes('garant')})});"
     "for(let y=0;y<document.documentElement.scrollHeight;y+=500){scrollTo(0,y);await new Promise(r=>setTimeout(r,350));leer()}"
     "leer();scrollTo(0,0);const s=JSON.stringify({origen:'coches.net',url:location.href,anuncios:[...M.values()]});"
-    "const q=new URLSearchParams(location.search),pa=q.get('pujaauto'),pp=q.get('pujaapp');"
-    "if(/^\\d+$/.test(pa||'')&&/^https?:\\/\\//.test(pp||'')){location.href=pp+'/valoraciones/'+pa+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
+    "const APP='__APP__';"
+    "if(/^https?:\\/\\//.test(APP)){location.href=APP+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
     "try{await navigator.clipboard.writeText(s);alert(M.size+' anuncios copiados. Pégalos en PujaAuto.')}"
     "catch(e){prompt(M.size+' anuncios: copia este texto (Ctrl+C) y pégalo en PujaAuto',s)}})();"
 )
@@ -128,6 +130,7 @@ def interpretar_pegado(texto: str) -> list[dict]:
         raise TasacionError("No has pegado nada. Usa el marcador en coches.net y pega aquí lo que copia.")
     decodificador = json.JSONDecoder()
     anuncios: dict[str, dict] = {}
+    firmas: set[tuple] = set()  # el mismo coche publicado dos veces (con ids distintos) cuenta una
     i = 0
     while i < len(texto):
         if texto[i] not in "{[":
@@ -144,8 +147,13 @@ def interpretar_pegado(texto: str) -> list[dict]:
             if not isinstance(a, dict):
                 continue
             limpio = _limpiar_anuncio(a)
-            if limpio:
-                anuncios.setdefault(limpio["id"], limpio)
+            if not limpio:
+                continue
+            firma = (limpio["titulo"].lower(), limpio["precio"], limpio["km"], limpio["anio"], limpio["provincia"])
+            if limpio["id"] in anuncios or firma in firmas:
+                continue
+            firmas.add(firma)
+            anuncios[limpio["id"]] = limpio
     if not anuncios:
         raise TasacionError(
             "No he encontrado anuncios en lo que has pegado. Tiene que ser el texto que copia el marcador "

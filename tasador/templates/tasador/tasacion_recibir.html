@@ -2,16 +2,17 @@
 {% block title %}Recibiendo anuncios · {{ app_name }}{% endblock %}
 {% block content %}
 <h1>Recibiendo los anuncios de coches.net…</h1>
-<p id="estado" class="mono ayuda">Un momento, estoy calculando el precio de {{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}.</p>
-<form id="envio" method="post" action="{% url 'valoracion_tasar' v.pk %}" hidden>
+<p id="estado" class="mono ayuda">Un momento, estoy calculando el precio{% if nombre %} de {{ nombre }}{% endif %}.</p>
+<form id="envio" method="post" action="{{ action }}" hidden>
   {% csrf_token %}
   <textarea name="anuncios" id="anuncios"></textarea>
   <input name="descuento" value="{{ descuento_defecto }}">
   {% if usar_ia %}<input type="checkbox" name="usar_ia" checked>{% endif %}
 </form>
 <p id="sin-datos" class="card aviso" hidden>
-  No me ha llegado ningún anuncio. Abre coches.net desde <a href="{% url 'valoracion_tasar' v.pk %}">la pantalla de tasar</a>
-  y pulsa el marcador allí (no recargues esta página: los datos viajan solo una vez).
+  No me ha llegado ningún anuncio. Abre coches.net desde la pantalla de tasar de un coche (🧮 en la rejilla)
+  y pulsa el marcador allí. No recargues esta página: los datos viajan solo una vez.
+  <br><a href="{{ volver|default:'/' }}">Volver</a>
 </p>
 <script>
   var p = new URLSearchParams(location.hash.slice(1)), datos = p.get('datos');

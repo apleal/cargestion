@@ -92,10 +92,19 @@
     <summary><b>1 · Instala el marcador (una sola vez)</b></summary>
     <ol class="mono ayuda" style="line-height:1.6">
       <li>Muestra la barra de marcadores de tu navegador (Ctrl+Mayús+B).</li>
-      <li>Arrastra este botón a la barra: <a class="btn mini-btn primary" href="javascript:{{ snippet_js|urlencode }}" onclick="alert('Arrástralo a la barra de marcadores; no se pulsa aquí.');return false;">📋 Copiar anuncios de coches.net</a></li>
+      <li>Arrastra este botón a la barra: <a id="marcador-enlace" class="btn mini-btn primary" href="javascript:void(0)" onclick="alert('Arrástralo a la barra de marcadores; no se pulsa aquí.');return false;">📋 Copiar anuncios de coches.net</a></li>
       <li>Si no puedes arrastrarlo: crea un marcador nuevo y pega el código de abajo como dirección, con «javascript:» delante.</li>
     </ol>
-    <textarea readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_js }}</textarea>
+    <textarea id="marcador-codigo" readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_js }}</textarea>
+    <p class="mono ayuda">Versión nueva (3/11): ya no depende de la dirección de coches.net, así que puedes cambiar los filtros allí. Si instalaste uno anterior, <b>bórralo e instala este</b>.</p>
+    <script>
+      (function () {  // la dirección de esta app va dentro del marcador
+        var t = document.getElementById('marcador-codigo'), a = document.getElementById('marcador-enlace');
+        if (!t || !a) return;
+        t.value = t.value.replace('__APP__', location.origin);
+        a.href = 'javascript:' + encodeURIComponent(t.value);
+      })();
+    </script>
   </details>
 
   <p class="mono ayuda"><b>2 ·</b> En coches.net filtra como tu coche (marca, modelo, combustible, año, km) y, en la página de resultados, pulsa el marcador. Espera a que baje sola y avise de «N anuncios copiados». Repite en la página 2 y 3 si quieres más (30 por página).</p>

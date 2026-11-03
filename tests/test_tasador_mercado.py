@@ -62,6 +62,14 @@ def test_acepta_una_lista_suelta_y_ignora_lo_que_no_vale():
     assert [a["id"] for a in tm.interpretar_pegado(texto)] == ["A0"]
 
 
+def test_el_mismo_coche_publicado_dos_veces_cuenta_una():
+    original = anuncio(1, 90000)
+    repetido = {**original, "id": "OTRO-ID"}  # mismo coche, otro anuncio
+    distinto = {**original, "id": "OTRO-COCHE", "provincia": "Sevilla"}
+    lista = tm.interpretar_pegado(pegado([original, repetido, distinto]))
+    assert [a["id"] for a in lista] == ["A1", "OTRO-COCHE"]
+
+
 @pytest.mark.parametrize("texto", ["", "   ", "hola esto no es JSON", '{"anuncios": []}', "[1, 2, 3]"])
 def test_lo_que_no_vale_da_un_error_que_se_entiende(texto):
     with pytest.raises(tm.TasacionError):
@@ -401,10 +409,12 @@ def test_aplicar_pone_la_venta_del_coche_y_recalcula_sus_pujas(coche):
     assert coche.r_puja_maxima_principal != antes and coche.r_puja_maxima_principal > 0  # tenía venta 0: ahora hay puja
 
 
-def test_el_marcador_devuelve_los_anuncios_a_la_app_si_viene_de_la_rejilla():
+def test_el_marcador_no_depende_de_la_direccion_de_coches_net():
     js = tm.SNIPPET_JS
-    assert "pujaauto" in js and "pujaapp" in js and "/tasar/recibir/#datos=" in js
-    assert chr(92) + "d+" in js and "https?:" in js  # valida el id y que la dirección sea http(s)
+    assert "__APP__" in js and "/tasar/recibir/#datos=" in js  # la dirección de la app se pone al instalarlo
+    assert "pujaauto" not in js and "location.search" not in js  # ya no lee parámetros que coches.net puede perder
+    assert chr(92) + "/" in js and "https?:" in js  # solo navega si la dirección es http(s)
+    assert "clipboard" in js  # y si no se sustituyó, aún copia en vez de no hacer nada
 
 
 @pytest.fixture
@@ -424,7 +434,7 @@ def test_la_pantalla_de_tasar_un_coche_abre_coches_net_ya_filtrado(web2, coche):
     html = web2.get(reverse("valoracion_tasar", args=[coche.pk])).content.decode()
     assert "Abrir coches.net con este coche" in html
     assert "https://www.coches.net/nissan/qashqai/gasolina/segunda-mano/?MinYear=2018" in html and f"pujaauto={coche.pk}" in html
-    assert "pujaapp" in html and "location.origin" in html  # la dirección de la app la pone el navegador
+    assert "marcador-enlace" in html and "location.origin" in html  # la dirección de la app la pone el navegador al instalar
     assert "javascript:" in html and "ANTHROPIC_API_KEY" in html
 
 
@@ -458,4 +468,101 @@ def test_las_pantallas_de_tasar_un_coche_exigen_login(client, coche):
 
 def test_un_descuento_invalido_no_tasa_el_coche(web2, coche):
     r = web2.post(reverse("valoracion_tasar", args=[coche.pk]), {"anuncios": pegado(COMPARABLES), "descuento": "x"}, follow=True)
+    assert "entre 0 y 30" in r.content.decode() and models.TasacionMercado.objects.count() == 0
+
+
+# ================================================================== el marcador v2: el coche se recuerda en la app
+def _anuncios_json(n=10):
+    return pegado([anuncio(i, 80000 + i * 4000) for i in range(n)])
+
+
+def test_abrir_la_pantalla_de_tasar_un_coche_lo_recuerda(web2, coche):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    d = web2.session["tasar_destino"]
+    assert (d["tipo"], d["id"]) == ("valoracion", coche.pk)
+
+
+def test_abrir_la_busqueda_recuerda_la_busqueda_y_el_ultimo_gana(web2, coche, busqueda):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    web2.get(reverse("busqueda_editar", args=[busqueda.pk]))
+    assert web2.session["tasar_destino"]["tipo"] == "busqueda"
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    assert web2.session["tasar_destino"]["tipo"] == "valoracion"
+
+
+def test_el_marcador_trae_los_anuncios_al_coche_recordado_aunque_se_cambien_los_filtros(web2, coche):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))  # se abre la pantalla de tasar el coche
+    # ... en coches.net se cambian filtros (la dirección ya no lleva nada) y se pulsa el marcador:
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5"})
+    t = models.TasacionMercado.objects.get()
+    assert r.status_code == 302 and r.url == reverse("tasacion_detalle", args=[t.pk])
+    assert t.valoracion == coche and t.vehiculo == coche.vehiculo and t.busqueda is None and t.valida
+
+
+def test_el_marcador_tambien_sirve_para_una_busqueda(web2, busqueda):
+    web2.get(reverse("busqueda_editar", args=[busqueda.pk]))
+    web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5"})
+    t = models.TasacionMercado.objects.get()
+    assert t.busqueda == busqueda and t.valoracion is None
+
+
+def test_sin_coche_recordado_pregunta_de_cual_son_y_no_pierde_los_anuncios(web2, coche, busqueda):
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "6", "usar_ia": "on"})
+    html = r.content.decode()
+    assert r.status_code == 200 and "¿De qué coche son estos anuncios?" in html and models.TasacionMercado.objects.count() == 0
+    assert "He recibido <b>10</b> anuncios" in html
+    assert f"valoracion:{coche.pk}" in html and f"busqueda:{busqueda.pk}" in html and "Nissan Qashqai" in html
+    assert 'name="descuento" value="6' in html and "A3" in html  # los anuncios siguen dentro del formulario
+
+    elegido = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5", "destino": f"valoracion:{coche.pk}"})
+    assert elegido.status_code == 302
+    assert models.TasacionMercado.objects.get().valoracion == coche
+
+
+def test_un_destino_que_ya_no_existe_vuelve_a_preguntar(web2, coche):
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5", "destino": "valoracion:99999"})
+    assert r.status_code == 200 and "Esa opción ya no existe" in r.content.decode()
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5", "destino": "otra:cosa"})
+    assert r.status_code == 200 and models.TasacionMercado.objects.count() == 0
+
+
+def test_el_destino_recordado_caduca(web2, coche, monkeypatch):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    sesion = web2.session
+    sesion["tasar_destino"]["ts"] -= 13 * 3600
+    sesion.save()
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5"})
+    assert r.status_code == 200 and "¿De qué coche son estos anuncios?" in r.content.decode()
+
+
+def test_si_el_coche_recordado_se_borra_pregunta(web2, coche):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    models.Valoracion.objects.filter(pk=coche.pk).delete()
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "5"})
+    assert r.status_code == 200 and "¿De qué coche" in r.content.decode()
+
+
+def test_la_pagina_puente_generica_dice_para_que_coche_calcula(web2, coche):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    html = web2.get(reverse("tasar_recibir")).content.decode()
+    assert "location.hash" in html and reverse("tasar_enviar") in html and "Nissan Qashqai" in html
+    sin = web2.__class__().get(reverse("tasar_recibir"))
+    assert sin.status_code == 302  # exige login
+
+
+def test_la_pagina_puente_antigua_por_id_sigue_funcionando(web2, coche):
+    html = web2.get(reverse("valoracion_tasar_recibir", args=[coche.pk])).content.decode()
+    assert reverse("valoracion_tasar", args=[coche.pk]) in html and "location.hash" in html
+
+
+def test_enviar_exige_login_y_post(web2, coche):
+    from django.test import Client
+
+    assert Client().post(reverse("tasar_enviar"), {"anuncios": "x"}).status_code == 302  # sin sesión
+    assert web2.get(reverse("tasar_enviar")).status_code == 405
+
+
+def test_el_descuento_invalido_al_enviar_no_tasa(web2, coche):
+    web2.get(reverse("valoracion_tasar", args=[coche.pk]))
+    r = web2.post(reverse("tasar_enviar"), {"anuncios": _anuncios_json(), "descuento": "abc"}, follow=True)
     assert "entre 0 y 30" in r.content.decode() and models.TasacionMercado.objects.count() == 0

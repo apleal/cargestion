@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}¿De qué coche son? · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>¿De qué coche son estos anuncios?</h1>
+<div class="card" style="max-width:640px">
+  {% if equivocado %}<p class="neg">Esa opción ya no existe. Elige otra.</p>{% endif %}
+  <p>He recibido <b>{{ n_anuncios }}</b> anuncios de coches.net, pero no sé para qué coche los quieres.
+  <span class="mono ayuda">(Esto pasa si no habías abierto antes la pantalla «🧮 Tasar» de un coche, o si ha pasado mucho tiempo.)</span></p>
+  <form method="post" action="{% url 'tasar_enviar' %}">
+    {% csrf_token %}
+    <textarea name="anuncios" hidden>{{ anuncios }}</textarea>
+    <input type="hidden" name="descuento" value="{{ descuento }}">
+    {% if usar_ia %}<input type="hidden" name="usar_ia" value="on">{% endif %}
+    <p><label for="destino">Tasar para:</label>
+      <select name="destino" id="destino" required>
+        <option value="" disabled selected>Elige un coche o una búsqueda…</option>
+        {% for o in opciones %}<option value="{{ o.valor }}">{{ o.texto }}</option>{% endfor %}
+      </select></p>
+    <button class="primary" type="submit">Calcular el precio</button>
+  </form>
+  {% if not opciones %}<p class="mono ayuda">No tienes coches ni búsquedas todavía.</p>{% endif %}
+</div>
+{% endblock %}

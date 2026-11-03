@@ -6,9 +6,12 @@ y qué coches se pueden comprar.
 """
 from __future__ import annotations
 
+import time
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -104,6 +107,8 @@ def busqueda_editar(request, pk):
         form.save()
         messages.success(request, "Búsqueda guardada.")
         return redirect("oportunidades_lista")
+    if request.method == "GET":
+        _recordar_destino(request, "busqueda", busqueda.pk)
     return render(
         request,
         "tasador/oportunidad_form.html",
@@ -190,6 +195,53 @@ def tasacion_aplicar(request, pk):
     return redirect("sesion_detalle", pk=t.valoracion.sesion_subasta_id)
 
 
+DESTINO_CADUCA_S = 12 * 3600
+
+
+def _recordar_destino(request, tipo: str, pk: int) -> None:
+    """Apunta (en la sesión) qué coche o búsqueda se está tasando: es adónde van los anuncios
+    cuando el marcador de coches.net los trae de vuelta, aunque se cambien los filtros allí."""
+    request.session["tasar_destino"] = {"tipo": tipo, "id": pk, "ts": time.time()}
+
+
+def _destino_recordado(request):
+    """El objeto (Valoracion o BusquedaOportunidad) recordado, o None si no hay o ha caducado."""
+    d = request.session.get("tasar_destino") or {}
+    if time.time() - d.get("ts", 0) > DESTINO_CADUCA_S:
+        return None
+    return _resolver_destino(d.get("tipo"), d.get("id"))
+
+
+def _resolver_destino(tipo, pk):
+    try:
+        pk = int(pk)
+    except (TypeError, ValueError):
+        return None
+    if tipo == "valoracion":
+        return models.Valoracion.objects.select_related("vehiculo", "sesion_subasta").filter(pk=pk).first()
+    if tipo == "busqueda":
+        return models.BusquedaOportunidad.objects.filter(pk=pk).first()
+    return None
+
+
+def _opciones_destino():
+    """Los coches y búsquedas entre los que elegir cuando no se sabe de cuál son los anuncios."""
+    opciones = []
+    vistos = set()
+    recientes = models.Valoracion.objects.select_related("vehiculo").order_by("-updated_at")[:40]
+    for v in recientes:
+        if v.vehiculo_id in vistos or len(vistos) >= 15:
+            continue
+        vistos.add(v.vehiculo_id)
+        veh = v.vehiculo
+        nombre = " ".join(x for x in (veh.marca, veh.modelo, veh.version) if x)
+        km = v.kilometros or veh.km_ultimo_conocido
+        opciones.append({"valor": f"valoracion:{v.pk}", "texto": f"Coche · {nombre}" + (f" · {km:,} km".replace(",", ".") if km else "")})
+    for b in models.BusquedaOportunidad.objects.filter(activa=True):
+        opciones.append({"valor": f"busqueda:{b.pk}", "texto": f"Búsqueda de oportunidades · {b.nombre}"})
+    return opciones
+
+
 def _descuento_de(request):
     try:
         d = Decimal(request.POST.get("descuento", "").replace(",", ".") or tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO)
@@ -215,6 +267,7 @@ def valoracion_tasar(request, pk):
             v, request.POST.get("anuncios", ""), descuento_pct=descuento, usuario=request.user, usar_ia=usar_ia
         )
         return redirect("tasacion_detalle", pk=t.pk)
+    _recordar_destino(request, "valoracion", v.pk)
     ref = tasacion_mercado.referencia_de_valoracion(v)
     return render(
         request,
@@ -237,6 +290,51 @@ def valoracion_tasar_recibir(request, pk):
     v = get_object_or_404(models.Valoracion.objects.select_related("vehiculo"), pk=pk)
     return render(
         request, "tasador/tasacion_recibir.html",
-        {"v": v, "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
-         "usar_ia": tasacion_mercado.clave_disponible()},
+        {"action": reverse("valoracion_tasar", args=[v.pk]), "nombre": f"{v.vehiculo.marca} {v.vehiculo.modelo}",
+         "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
+         "usar_ia": tasacion_mercado.clave_disponible(), "volver": reverse("valoracion_tasar", args=[v.pk])},
     )
+
+
+@login_required
+def tasar_recibir(request):
+    """Adónde lleva el marcador los anuncios de coches.net (vienen en la parte # de la dirección,
+    que no viaja al servidor). Un pequeño script los envía a ``tasar_enviar``."""
+    destino = _destino_recordado(request)
+    nombre = None
+    if destino is not None:
+        nombre = tasacion_mercado.referencia_de_valoracion(destino).nombre if isinstance(destino, models.Valoracion) else destino.nombre
+    return render(
+        request, "tasador/tasacion_recibir.html",
+        {"action": reverse("tasar_enviar"), "nombre": nombre, "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
+         "usar_ia": tasacion_mercado.clave_disponible(), "volver": reverse("oportunidades_lista")},
+    )
+
+
+@login_required
+@require_POST
+def tasar_enviar(request):
+    """Recibe los anuncios del marcador y los tasa para el coche/búsqueda recordado. Si no se sabe
+    de cuál son, pregunta (y no pierde los anuncios)."""
+    anuncios = request.POST.get("anuncios", "")
+    descuento = _descuento_de(request)
+    if descuento is None:
+        messages.error(request, "El descuento de negociación debe ser un número entre 0 y 30.")
+        return redirect("oportunidades_lista")
+    elegido = request.POST.get("destino", "")
+    destino = None
+    if elegido:
+        tipo, _, pk = elegido.partition(":")
+        destino = _resolver_destino(tipo, pk)
+    if destino is None and not elegido:
+        destino = _destino_recordado(request)
+    if destino is None:
+        return render(
+            request, "tasador/tasar_elegir.html",
+            {"anuncios": anuncios, "descuento": descuento, "usar_ia": request.POST.get("usar_ia") == "on",
+             "opciones": _opciones_destino(), "equivocado": bool(elegido),
+             "n_anuncios": anuncios.count('"precio"')},
+        )
+    usar_ia = request.POST.get("usar_ia") == "on" and tasacion_mercado.clave_disponible()
+    t = tasacion_mercado.tasar(destino, anuncios, descuento_pct=descuento, usuario=request.user, usar_ia=usar_ia)
+    return redirect("tasacion_detalle", pk=t.pk)
