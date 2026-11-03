@@ -47,8 +47,11 @@ ESTADOS_VALORACION = [
 
 ESTADOS_CARROCERIA = [
     ("Muy buen estado", 2, 10),
+    ("3 piezas", 3, 15),
     ("Estado normal", 4, 20),
+    ("5 piezas", 5, 25),
     ("Desgastado", 6, 30),
+    ("8 piezas", 8, 35),
     ("Mal estado", 10, 40),
 ]
 

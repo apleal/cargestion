@@ -752,3 +752,17 @@ def test_enlace_de_cochesnet_guardado_ofrece_abrirlo_y_cambiarlo(cliente):
     assert "🔗 coches.net" in html and f'href="{url}"' in html
     assert 'target="_blank"' in html and "✎" in html
     assert "＋ enlace" not in html.split("<tbody>")[1].split("</tbody>")[0]
+
+
+def test_estados_de_carroceria_por_numero_de_piezas():
+    """3, 5 y 8 piezas existen, ordenados entre los demás, y fijan las piezas de pintura."""
+    from tasador.models import EstadoCarroceria
+
+    call_command("seed_datos")
+    call_command("seed_datos")  # se ejecuta en cada despliegue: no debe duplicar nada
+    por_nombre = {e.nombre: e.piezas_estimadas for e in EstadoCarroceria.objects.all()}
+    assert (por_nombre["3 piezas"], por_nombre["5 piezas"], por_nombre["8 piezas"]) == (3, 5, 8)
+    assert EstadoCarroceria.objects.filter(nombre__in=["3 piezas", "5 piezas", "8 piezas"]).count() == 3
+    assert [e.piezas_estimadas for e in EstadoCarroceria.objects.all()] == [2, 3, 4, 5, 6, 8, 10]
+    assert str(EstadoCarroceria.objects.get(nombre="5 piezas")) == "5 piezas"
+    assert str(EstadoCarroceria.objects.get(nombre="Estado normal")) == "Estado normal · 4 piezas"

@@ -294,6 +294,8 @@ class EstadoCarroceria(models.Model):
         ordering = ["orden", "piezas_estimadas"]
 
     def __str__(self) -> str:
+        if "pieza" in self.nombre.lower():
+            return self.nombre  # «3 piezas» ya lo dice: sin repetir
         return f"{self.nombre} · {self.piezas_estimadas} piezas"
 
 
