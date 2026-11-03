@@ -39,13 +39,21 @@
       <li>Si no puedes arrastrarlo: crea un marcador nuevo y pega el código de abajo como dirección, con «javascript:» delante.</li>
     </ol>
     <textarea id="marcador-codigo" readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_js }}</textarea>
-    <p class="mono ayuda">Versión nueva (3/11): ya no depende de la dirección de coches.net, así que puedes cambiar los filtros allí. Si instalaste uno anterior, <b>bórralo e instala este</b>.</p>
+    <p class="mono ayuda"><b>Cómo saber que usas el marcador nuevo:</b> al pulsarlo aparece una cajita azul arriba a la derecha de coches.net («🧮 PujaAuto: leyendo anuncios…») y al terminar te lleva solo a PujaAuto. Si <b>no</b> sale la cajita azul y acabas con un aviso de «anuncios copiados», es un marcador antiguo: <b>bórralo e instala este</b>.</p>
+    <details>
+      <summary class="mono ayuda">Opcional (en prueba): marcador que se actualiza solo</summary>
+      <textarea id="marcador-cargador" readonly rows="3" style="width:100%;font-size:.7rem" onclick="this.select()">{{ snippet_cargador }}</textarea>
+      <p class="mono ayuda">Crea un marcador con «javascript:» seguido de este código. Descarga de PujaAuto la versión actual cada vez, así no habría que reinstalar si algo cambia. Si no funciona en tu navegador te lo dice y usas el normal.</p>
+    </details>
     <script>
-      (function () {  // la dirección de esta app va dentro del marcador
-        var t = document.getElementById('marcador-codigo'), a = document.getElementById('marcador-enlace');
-        if (!t || !a) return;
-        t.value = t.value.replace('__APP__', location.origin);
-        a.href = 'javascript:' + encodeURIComponent(t.value);
+      (function () {  // la dirección de esta app va dentro de los marcadores
+        var a = document.getElementById('marcador-enlace');
+        ['marcador-codigo', 'marcador-cargador'].forEach(function (id) {
+          var t = document.getElementById(id);
+          if (t) t.value = t.value.replace('__APP__', location.origin);
+        });
+        var c = document.getElementById('marcador-codigo');
+        if (a && c) a.href = 'javascript:' + encodeURIComponent(c.value);
       })();
     </script>
   </details>

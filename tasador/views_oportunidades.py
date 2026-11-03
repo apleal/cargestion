@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 
 from django.contrib import messages
+from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -116,6 +117,7 @@ def busqueda_editar(request, pk):
             "form": form,
             "busqueda": busqueda,
             "snippet_js": tasacion_mercado.SNIPPET_JS,
+            "snippet_cargador": tasacion_mercado.SNIPPET_CARGADOR,
             "ia_disponible": tasacion_mercado.clave_disponible(),
             "tasaciones": list(busqueda.tasaciones.all()[:5]),
             "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
@@ -278,6 +280,7 @@ def valoracion_tasar(request, pk):
             "url_cochesnet": v.vehiculo.url_busqueda_cochesnet or url_sugerida,
             "url_guardada": v.vehiculo.url_busqueda_cochesnet,
             "snippet_js": tasacion_mercado.SNIPPET_JS,
+            "snippet_cargador": tasacion_mercado.SNIPPET_CARGADOR,
             "ia_disponible": tasacion_mercado.clave_disponible(),
             "descuento_defecto": tasacion_mercado.DESCUENTO_NEGOCIACION_DEFECTO,
             "tasaciones": list(v.vehiculo.tasaciones_mercado.all()[:5]),
@@ -360,3 +363,12 @@ def valoracion_url_busqueda(request, pk):
         messages.success(request, "Guardada: «Abrir coches.net» usará tu búsqueda para este coche.")
     v.vehiculo.save(update_fields=["url_busqueda_cochesnet"])
     return redirect("valoracion_tasar", pk=v.pk)
+
+
+def marcador_js(request):
+    """El código del marcador, siempre en su última versión. Lo carga el marcador instalado desde
+    la página de coches.net. Es público (no lleva nada secreto: solo el código) y no se cachea."""
+    r = HttpResponse(tasacion_mercado.codigo_para_la_app(), content_type="application/javascript; charset=utf-8")
+    r["Cache-Control"] = "no-store"
+    r["Access-Control-Allow-Origin"] = "*"
+    return r

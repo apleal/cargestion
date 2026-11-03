@@ -668,3 +668,35 @@ def test_el_marcador_antiguo_sin_direccion_dice_que_hay_que_reinstalarlo():
     js = tm.SNIPPET_JS
     assert "este marcador es antiguo" in js and "Bórralo e instala el nuevo" in js and "O pega los anuncios a mano" in js
     assert "\n" not in js
+
+
+# ================================================================== el marcador: aviso en pantalla, cargador y código servido
+def test_el_marcador_enseña_en_pantalla_lo_que_hace():
+    js = tm.SNIPPET_JS
+    assert "2147483647" in js and "leyendo anuncios" in js and "enviando '+M.size+' anuncios a PujaAuto" in js
+    assert "no he encontrado anuncios en esta página" in js  # no te manda a PujaAuto con una lista vacía
+    assert "pasada<2" in js  # dos pasadas: recoge los anuncios que coches.net carga tarde
+
+
+def test_el_cargador_es_una_linea_que_descarga_el_codigo_de_la_app():
+    js = tm.SNIPPET_CARGADOR
+    assert "\n" not in js and js.startswith("(function(){") and js.endswith("})();")
+    assert "'__APP__/tasar/marcador.js?'" in js and "onerror" in js and "Date.now()" in js  # sin caché; avisa si falla
+
+
+def test_la_app_sirve_el_codigo_del_marcador_sin_sesion_y_sin_cache(client):
+    r = client.get(reverse("tasar_marcador_js"))
+    cuerpo = r.content.decode()
+    assert r.status_code == 200 and r["Content-Type"].startswith("application/javascript")
+    assert r["Cache-Control"] == "no-store"
+    assert "__APP__" not in cuerpo  # la dirección sale de la del propio script
+    assert "document.currentScript.src" in cuerpo and "mt-CardAd-infoContainer" in cuerpo and "/tasar/recibir/#datos=" in cuerpo
+    assert cuerpo == tm.codigo_para_la_app()
+
+
+def test_las_pantallas_enseñan_el_marcador_principal_y_el_cargador(web2, coche):
+    html = web2.get(reverse("valoracion_tasar", args=[coche.pk])).content.decode()
+    assert 'id="marcador-codigo"' in html and "mt-CardAd-infoContainer" in html  # el principal es el completo
+    assert 'id="marcador-cargador"' in html and "/tasar/marcador.js" in html
+    assert "cajita azul" in html and "bórralo e instala este" in html
+    assert "marcador-completo" not in html

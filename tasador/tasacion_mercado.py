@@ -32,13 +32,16 @@ from .models import BusquedaOportunidad, Cambio, Combustible, TasacionMercado, V
 
 log = logging.getLogger(__name__)
 
-# Marcador que se ejecuta EN el navegador de la persona, sobre la página de resultados
-# de coches.net: baja la página poco a poco (los anuncios cargan al desplazarse), recoge
-# los anuncios y los lleva a la app (que recuerda de qué coche es la tasación abierta). El
-# texto ``__APP__`` se sustituye en el navegador por la dirección de la app al instalarlo.
-# Solo si no se ha sustituido copia los anuncios al portapapeles. Una sola línea.
+# Código que se ejecuta EN el navegador de la persona, sobre la página de resultados de coches.net:
+# baja la página poco a poco (los anuncios cargan al desplazarse), recoge los anuncios y los lleva a
+# la app (que recuerda de qué coche es la tasación abierta). Va enseñando en pantalla lo que hace.
+# El texto ``__APP__`` es la dirección de la app. Una sola línea.
 SNIPPET_JS = (
-    "(async()=>{const M=new Map();const num=t=>{const d=(t||'').replace(/\\D/g,'');return d?parseInt(d,10):null};"
+    "(async()=>{const T=document.createElement('div');"
+    "T.style.cssText='position:fixed;top:12px;right:12px;z-index:2147483647;background:#00519e;color:#fff;padding:10px 14px;"
+    "border-radius:8px;font:14px sans-serif;box-shadow:0 2px 10px #0006;max-width:320px';document.body.appendChild(T);"
+    "const say=x=>{T.textContent='🧮 PujaAuto: '+x};say('leyendo anuncios…');"
+    "const M=new Map();const num=t=>{const d=(t||'').replace(/\\D/g,'');return d?parseInt(d,10):null};"
     "const leer=()=>document.querySelectorAll('.mt-CardAd-infoContainer').forEach(c=>{"
     "const a=c.querySelector('[data-testid=\"card-ad-title\"] a');if(!a)return;"
     "const h=a.getAttribute('href')||'';const m=h.match(/-(\\d{5,})-covo\\.aspx/);const id=m?m[1]:h;"
@@ -50,13 +53,31 @@ SNIPPET_JS = (
     "else prov=t});const i=c.innerText.toLowerCase();"
     "M.set(id,{id:id,url:new URL(h,location.origin).href,titulo:a.innerText.trim(),precio:p?num(p.innerText):null,"
     "km:km,anio:anio,cv:cv,combustible:comb,provincia:prov,profesional:i.includes('profesional'),garantia:i.includes('garant')})});"
-    "for(let y=0;y<document.documentElement.scrollHeight;y+=500){scrollTo(0,y);await new Promise(r=>setTimeout(r,350));leer()}"
-    "leer();scrollTo(0,0);const s=JSON.stringify({origen:'coches.net',url:location.href,anuncios:[...M.values()]});"
-    "const APP='__APP__';"
-    "if(/^https?:\\/\\//.test(APP)){location.href=APP+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
+    "for(let pasada=0;pasada<2;pasada++){for(let y=0;y<document.documentElement.scrollHeight;y+=500){scrollTo(0,y);"
+    "await new Promise(r=>setTimeout(r,350));leer();say('leyendo anuncios… '+M.size)}}"
+    "leer();scrollTo(0,0);"
+    "if(!M.size){say('no he encontrado anuncios en esta página. ¿Estás en la lista de resultados de coches.net?');return}"
+    "const s=JSON.stringify({origen:'coches.net',url:location.href,anuncios:[...M.values()]});const APP='__APP__';"
+    "if(/^https?:\\/\\//.test(APP)){say('enviando '+M.size+' anuncios a PujaAuto…');location.href=APP+'/tasar/recibir/#datos='+encodeURIComponent(s);return}"
     "try{await navigator.clipboard.writeText(s);alert(M.size+' anuncios copiados, pero este marcador es antiguo y no sabe llevarlos a PujaAuto. Bórralo e instala el nuevo desde «🧮 Tasar» del coche. Mientras tanto, pégalos en «O pega los anuncios a mano».')}"
     "catch(e){prompt(M.size+' anuncios: copia este texto (Ctrl+C) y pégalo en PujaAuto',s)}})();"
 )
+
+# El marcador que se instala (y que ya no hace falta cambiar nunca): descarga de la app la versión actual
+# del código de arriba cada vez que se pulsa. ``__APP__`` se sustituye por la dirección de la app al instalarlo.
+SNIPPET_CARGADOR = (
+    "(function(){var s=document.createElement('script');s.src='__APP__/tasar/marcador.js?'+Date.now();"
+    "s.onerror=function(){alert('No he podido cargar PujaAuto desde esta página (puede que el navegador o coches.net "
+    "lo bloqueen). Usa el «marcador completo» de la pantalla «🧮 Tasar» o pega los anuncios a mano.')};"
+    "document.head.appendChild(s)})();"
+)
+
+
+def codigo_para_la_app() -> str:
+    """El código completo, listo para servirlo desde la app: la dirección de la app se toma de
+    la dirección desde la que se ha cargado el propio script (no hay que configurarla)."""
+    return "(function(){var O=new URL(document.currentScript.src).origin;" + SNIPPET_JS.replace("'__APP__'", "O") + "})();"
+
 
 PENDIENTE_DEFECTO = Decimal("0.05")  # €/km que baja un coche de estas características si los anuncios no dan una
 PENDIENTE_MIN, PENDIENTE_MAX = Decimal("0.01"), Decimal("0.20")
