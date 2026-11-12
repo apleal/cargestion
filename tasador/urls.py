@@ -1,10 +1,14 @@
 from django.urls import path
 
-from . import views, views_nayox, views_oportunidades as oportunidades
+from . import views, views_nayox, views_oportunidades as oportunidades, views_tasacion_ia
 
 urlpatterns = [
     path("", views.panel, name="panel"),
     path("nayox/", views_nayox.nayox_importar, name="nayox_importar"),
+    path("tasacion-ia/", views_tasacion_ia.tasacion_ia, name="tasacion_ia"),
+    path("tasacion-ia/leer/", views_tasacion_ia.tasacion_ia_leer, name="tasacion_ia_leer"),
+    path("tasacion-ia/manual/", views_tasacion_ia.tasacion_ia_manual, name="tasacion_ia_manual"),
+    path("tasacion-ia/crear/", views_tasacion_ia.tasacion_ia_crear, name="tasacion_ia_crear"),
     path("oportunidades/", oportunidades.oportunidades_lista, name="oportunidades_lista"),
     path("oportunidades/nueva/", oportunidades.busqueda_nueva, name="busqueda_nueva"),
     path("oportunidades/<int:pk>/", oportunidades.busqueda_editar, name="busqueda_editar"),

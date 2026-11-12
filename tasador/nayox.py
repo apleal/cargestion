@@ -203,7 +203,8 @@ def adivinar_acabado(version: str) -> str:
         limpio = token.strip(",.;")
         if limpio.upper() in _CAMBIO_Y_TRACCION:
             continue  # el cambio y la tracción van detrás del acabado
-        if re.fullmatch(r"[A-Za-zÁÉÍÓÚáéíóú][A-Za-z0-9+\-]{0,11}", limpio) and limpio.upper() not in _NO_ES_ACABADO:
+        # una sola letra («X») no sirve de filtro: coincidiría con casi cualquier título
+        if re.fullmatch(r"[A-Za-zÁÉÍÓÚáéíóú][A-Za-z0-9+\-]{1,11}", limpio) and limpio.upper() not in _NO_ES_ACABADO:
             return limpio.upper()
         return ""
     return ""

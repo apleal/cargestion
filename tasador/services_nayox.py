@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from . import services
-from .models import EstadoCarroceria, Proveedor, Valoracion
-from .nayox import FichaNayox, NayoxError, _capitalizar
-from .parser import LoteParseado
+from . import services_fichas
+from .models import Valoracion
+from .nayox import FichaNayox, NayoxError
 
 
 def _si_no(valor: bool | None) -> str:
@@ -48,42 +47,14 @@ def importar_ficha(f: FichaNayox, usuario=None, hoy: date | None = None) -> tupl
 
     No hay precio de compra en la ficha: queda en 0 y la rejilla calcula la puja máxima en cuanto
     haya un precio de venta (que sale de tasar el coche). Devuelve (valoración, era_reimportación)."""
-    if not Proveedor.objects.filter(nombre="Nayox").exists():
-        raise NayoxError("El proveedor Nayox no está configurado (ejecuta seed_datos).")
-    sesion = services.sesion_continua("Nayox", "Nayox", usuario)
-    lote = LoteParseado(
-        texto_original=f"Nayox {f.expediente}",
-        formato="nayox",
-        lote=f.expediente[:20],
-        marca=_capitalizar(f.marca),
-        modelo=_capitalizar(f.modelo),
-        version=f.version[:120],
-        potencia_kw=f.potencia_kw,
-        potencia_cv=f.potencia_cv,
-        combustible=f.combustible,
-        cambio=f.cambio,
-        kilometros=f.km,
-        anio=f.anio,
-        matricula=f.matricula,
-        fecha_matriculacion=f.fecha_matriculacion.isoformat() if f.fecha_matriculacion else "",
-    )
-    v, reimportada = services.crear_valoracion_desde_lote(lote, sesion, usuario=usuario)
-
-    veh = v.vehiculo
-    veh.bastidor = f.vin or veh.bastidor
-    veh.version = veh.version or f.version[:120]
-    veh.acabado = veh.acabado or f.acabado
-    veh.potencia_cv = veh.potencia_cv or f.potencia_cv
-    veh.potencia_kw = veh.potencia_kw or f.potencia_kw
-    veh.save()
-
-    v.kilometros = f.km
-    if not reimportada and f.carroceria_sin_danos:
-        # sin daños de carrocería declarados: el estado de menos pintura
-        muy_bueno = EstadoCarroceria.objects.filter(nombre="Muy buen estado").first()
-        if muy_bueno:
-            v.estado_carroceria = muy_bueno
-            v.piezas_pintura = muy_bueno.piezas_estimadas
-    v.observaciones = observaciones_de(f, hoy)
-    services.recalcular_y_guardar(v)
-    return v, reimportada
+    try:
+        return services_fichas.crear_coche_en_rejilla(
+            proveedor="Nayox", ubicacion="Nayox", referencia=f.expediente or f.matricula or f.vin,
+            marca=f.marca, modelo=f.modelo, version=f.version, acabado=f.acabado,
+            anio=f.anio, fecha_matriculacion=f.fecha_matriculacion, km=f.km,
+            combustible=f.combustible, cambio=f.cambio, potencia_kw=f.potencia_kw, potencia_cv=f.potencia_cv,
+            matricula=f.matricula, vin=f.vin, observaciones=observaciones_de(f, hoy),
+            carroceria_sin_danos=f.carroceria_sin_danos, usuario=usuario,
+        )
+    except services_fichas.FichaError as e:
+        raise NayoxError(str(e)) from e

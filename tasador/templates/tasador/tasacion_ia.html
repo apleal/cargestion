@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Tasación IA · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>🤖 Tasación IA</h1>
+<p class="mono ayuda">Sube un PDF (ficha, anuncio, inspección…) o pega el texto con las características de un coche. Se leen los datos (con IA), los revisas, y pasas a <b>tasarlo</b> con anuncios reales de coches.net. El coche queda en la rejilla para seguirlo, como los de Nayox.</p>
+
+<form method="post" action="{% url 'tasacion_ia_leer' %}" enctype="multipart/form-data" class="card" style="max-width:760px">
+  {% csrf_token %}
+  <p><label for="pdf"><b>Opción 1 · Subir un PDF</b></label>
+    <input type="file" id="pdf" name="pdf" accept="application/pdf,.pdf"></p>
+  <p style="margin-bottom:4px"><label for="texto"><b>Opción 2 · Pegar el texto</b> <span class="mono ayuda">(o las dos cosas)</span></label></p>
+  <textarea id="texto" name="texto" rows="7" style="width:100%" placeholder="Ej.: Cupra Formentor 1.5 e-Hybrid VZ DSG, 2023, 65.000 km, gris, matrícula 1234ABC, 25.900 €…"></textarea>
+  <p style="margin-top:8px"><label style="display:flex;gap:8px;align-items:center">
+    <input type="checkbox" name="usar_ia" {% if ia_disponible %}checked{% else %}disabled{% endif %} style="width:auto"> Leer los datos con IA</label>
+    {% if not ia_disponible %}<span class="mono ayuda">La IA no está activada en el servidor (falta <code>ANTHROPIC_API_KEY</code>): se usará un lector básico y tendrás que revisar más.</span>{% endif %}</p>
+  <button class="primary" type="submit">Leer datos</button>
+  <a class="btn" href="{% url 'tasacion_ia_manual' %}">Rellenar a mano</a>
+</form>
+
+{% if recientes %}
+<div class="card">
+  <h2>Últimos tasados</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th class="num">Km</th><th class="num">Compra</th><th class="num">Venta</th><th class="num">Puja 15&nbsp;%</th><th></th></tr></thead>
+    <tbody>
+      {% for v in recientes %}
+      <tr>
+        <td><b>{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</b> <span class="ver">{{ v.vehiculo.version }}</span></td>
+        <td class="num">{{ v.kilometros|miles }}</td>
+        <td class="num">{% if v.precio_salida %}{{ v.precio_salida|eur }}{% else %}—{% endif %}</td>
+        <td class="num">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td class="acciones-fila">
+          <a class="btn mini-btn primary" href="{% url 'valoracion_tasar' v.pk %}">🧮 Tasar</a>
+          <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="mono ayuda"><a href="{% url 'sesion_detalle' recientes.0.sesion_subasta_id %}">Ver todos en la rejilla</a></p>
+</div>
+{% endif %}
+{% endblock %}

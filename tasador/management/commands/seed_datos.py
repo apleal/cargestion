@@ -226,4 +226,24 @@ class Command(BaseCommand):
             },
         )
 
+        # --- Tasación IA: coches de un PDF o de un texto pegado (cualquier origen) ---
+        # Como Nayox: sin comisión ni gastos fijos de partida (se desconocen); el precio de compra, si
+        # se conoce, se anota al crear el coche.
+        tia, _ = Proveedor.objects.update_or_create(
+            nombre="Tasación IA",
+            defaults={"activo": True, "notas": "Coches de un PDF o texto pegado: se tasan y se siguen en la rejilla."},
+        )
+        Ubicacion.objects.update_or_create(proveedor=tia, nombre="Tasación IA", defaults={"provincia": ""})
+        TipoSubasta.objects.update_or_create(
+            proveedor=tia,
+            nombre="Tasación IA",
+            defaults={
+                "modo": TipoSubasta.Modo.TABLA,
+                "usa_tabla_comision": False,
+                "cuota_plana": Decimal("0"),
+                "aplica_conceptos_fijos": False,
+                "es_predeterminado": True,
+            },
+        )
+
         self.stdout.write(self.style.SUCCESS("Datos iniciales cargados."))

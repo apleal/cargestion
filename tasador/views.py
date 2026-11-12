@@ -339,7 +339,7 @@ def sesion_lista(request):
         fin_semana = inicio_semana + timedelta(days=6)
         sesiones = sesiones.filter(
             Q(fecha__gte=inicio_semana, fecha__lte=fin_semana)
-            | Q(proveedor__nombre__in=("Auto1", "Nayox"))  # sesiones únicas y continuas
+            | Q(proveedor__nombre__in=("Auto1", "Nayox", "Tasación IA"))  # sesiones únicas y continuas
         )
 
     sesiones = sesiones.order_by("-fecha")

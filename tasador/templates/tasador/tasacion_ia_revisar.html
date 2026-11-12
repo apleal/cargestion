@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Revisar datos · Tasación IA · {{ app_name }}{% endblock %}
+{% block content %}
+<p class="mono"><a href="{% url 'tasacion_ia' %}">← Tasación IA</a></p>
+<h1>Revisa los datos del coche</h1>
+
+{% for n in notas %}<p class="mono ayuda">ℹ️ {{ n }}</p>{% endfor %}
+{% if avisos %}
+<div class="card aviso"><b>⚠ A tener en cuenta:</b>
+  <ul>{% for a in avisos %}<li>{{ a }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" action="{% url 'tasacion_ia_crear' %}" class="card" style="max-width:820px">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="aviso">{{ form.non_field_errors }}</div>{% endif %}
+  {{ form.avisos }}{{ form.origen }}
+  <div class="costs-grid">
+    {% for campo in form.visible_fields %}
+      {% if campo.name != "observaciones" and campo.name != "carroceria_sin_danos" %}
+      <p>
+        <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+        {{ campo }}
+        {% if campo.errors %}<span class="neg">{{ campo.errors.0 }}</span>{% endif %}
+        {% if campo.help_text %}<span class="mono ayuda">{{ campo.help_text }}</span>{% endif %}
+      </p>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p><label for="{{ form.observaciones.id_for_label }}">{{ form.observaciones.label }}</label>{{ form.observaciones }}</p>
+  <p><label style="display:flex;gap:8px;align-items:center"><span style="width:auto">{{ form.carroceria_sin_danos }}</span> {{ form.carroceria_sin_danos.label }}</label></p>
+  <button class="primary" type="submit">Crear coche y tasar</button>
+</form>
+{% endblock %}
