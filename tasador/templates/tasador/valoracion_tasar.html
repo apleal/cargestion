@@ -4,9 +4,15 @@
 {% block content %}
 <p class="mono"><a href="{% url 'sesion_detalle' v.sesion_subasta_id %}">← Volver a la subasta</a></p>
 <h1>🧮 Tasar: {{ ref.nombre }}</h1>
-<p class="mono ayuda">{{ ref.anio|default_if_none:"—" }} · {{ ref.km_referencia|miles }} km{% if ref.potencia_cv %} · {{ ref.potencia_cv }} CV{% endif %}{% if ref.combustible %} · {{ ref.get_combustible_display }}{% endif %} · venta actual: <b>{{ v.precio_venta_estimado|eur }}</b></p>
+<p class="mono ayuda">{{ ref.anio|default_if_none:"—" }}{% if ref.palabras_titulo %} · acabado {{ ref.palabras_titulo }}{% endif %} · {{ ref.km_referencia|miles }} km{% if ref.potencia_cv %} · {{ ref.potencia_cv }} CV{% endif %}{% if ref.combustible %} · {{ ref.get_combustible_display }}{% endif %} · venta actual: <b>{{ v.precio_venta_estimado|eur }}</b></p>
 
 <div class="card" style="max-width:760px">
+  <form method="post" action="{% url 'valoracion_acabado' v.pk %}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+    {% csrf_token %}
+    <p style="margin:0"><label for="acabado"><b>Acabado</b> <span class="mono ayuda">(solo se usan anuncios cuyo título lo lleve; vacío = cualquiera)</span></label>
+      <input type="text" id="acabado" name="acabado" value="{{ v.vehiculo.acabado }}" maxlength="40" placeholder="p. ej. VZ, FR, Style…" style="width:220px"></p>
+    <button type="submit" class="btn mini-btn">Guardar</button>
+  </form>
   <h2>Cómo saber a cuánto venderlo</h2>
   <p class="mono ayuda">El agente mira anuncios reales de coches.net de coches como este, quita los que no son comparables, ajusta por km y te dice el precio de venta. <b>Solo sugiere</b>: no cambia nada hasta que pulses «Aplicar».</p>
   <ol style="line-height:1.9">

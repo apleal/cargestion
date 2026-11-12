@@ -1,9 +1,10 @@
 from django.urls import path
 
-from . import views, views_oportunidades as oportunidades
+from . import views, views_nayox, views_oportunidades as oportunidades
 
 urlpatterns = [
     path("", views.panel, name="panel"),
+    path("nayox/", views_nayox.nayox_importar, name="nayox_importar"),
     path("oportunidades/", oportunidades.oportunidades_lista, name="oportunidades_lista"),
     path("oportunidades/nueva/", oportunidades.busqueda_nueva, name="busqueda_nueva"),
     path("oportunidades/<int:pk>/", oportunidades.busqueda_editar, name="busqueda_editar"),
@@ -13,6 +14,7 @@ urlpatterns = [
     path("tasar/enviar/", oportunidades.tasar_enviar, name="tasar_enviar"),
     path("valoraciones/<int:pk>/tasar/", oportunidades.valoracion_tasar, name="valoracion_tasar"),
     path("valoraciones/<int:pk>/tasar/url/", oportunidades.valoracion_url_busqueda, name="valoracion_url_busqueda"),
+    path("valoraciones/<int:pk>/tasar/acabado/", oportunidades.valoracion_acabado, name="valoracion_acabado"),
     path("valoraciones/<int:pk>/tasar/recibir/", oportunidades.valoracion_tasar_recibir, name="valoracion_tasar_recibir"),
     path("oportunidades/tasaciones/<int:pk>/", oportunidades.tasacion_detalle, name="tasacion_detalle"),
     path("oportunidades/tasaciones/<int:pk>/aplicar/", oportunidades.tasacion_aplicar, name="tasacion_aplicar"),

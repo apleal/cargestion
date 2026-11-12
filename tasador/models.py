@@ -394,6 +394,10 @@ class Vehiculo(models.Model):
         help_text="Anuncio de coches.net que usas para saber a cuánto vender este coche; "
         "se guarda para no tener que buscarlo otra vez y vale para todas sus tasaciones.",
     )
+    acabado = models.CharField(
+        max_length=40, blank=True,
+        help_text="Acabado/versión que debe llevar el título de los anuncios comparables (p. ej. «VZ», «FR»).",
+    )
     url_busqueda_cochesnet = models.URLField(
         "tu búsqueda de coches.net", max_length=1000, blank=True,
         help_text="La búsqueda de coches.net que prefieres para tasar este coche (se guarda sola al tasar).",

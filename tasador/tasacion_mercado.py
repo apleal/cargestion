@@ -100,6 +100,7 @@ class ReferenciaCoche:
     cambio: str = ""
     potencia_cv: int | None = None
     tolerancia_cv: int = 10
+    palabras_titulo: str = ""
 
     def get_combustible_display(self) -> str:
         return dict(Combustible.choices).get(self.combustible, "no indicado")
@@ -115,6 +116,7 @@ def referencia_de_valoracion(v: Valoracion) -> ReferenciaCoche:
         nombre=" ".join(x for x in (veh.marca, veh.modelo, veh.version) if x),
         anio=veh.anio, km_referencia=v.kilometros or veh.km_ultimo_conocido or 0,
         combustible=veh.combustible or "", cambio=veh.cambio or "", potencia_cv=veh.potencia_cv,
+        palabras_titulo=veh.acabado or "",
     )
 
 
@@ -280,9 +282,12 @@ def filtrar_comparables(
                     f"Tu búsqueda de coches.net es de combustible «{dominante}» y el coche figura como "
                     f"«{b.get_combustible_display().lower()}»: se han usado los anuncios de tu búsqueda."
                 )
+    palabras = [p.lower() for p in (getattr(b, "palabras_titulo", "") or "").split() if p]
     for a in anuncios:
         motivo = ""
-        if a["km"] is None:
+        if palabras and not all(p in a["titulo"].lower() for p in palabras):
+            motivo = f"el título no lleva «{' '.join(palabras)}»"
+        elif a["km"] is None:
             motivo = "sin kilómetros"
         elif abs(a["km"] - b.km_referencia) > MARGEN_KM:
             motivo = f"km muy distintos ({a['km']:,})".replace(",", ".")
@@ -518,6 +523,12 @@ def tasar(
         r = calcular_precio(comparables, b.km_referencia, descuento_pct)
     except TasacionError as e:
         t.error = str(e)
+        por_titulo = sum(1 for x in excluidos if "el título no lleva" in x.get("motivo", ""))
+        if por_titulo and por_titulo >= len(excluidos) / 2:
+            t.error += (
+                f" Ojo: {por_titulo} anuncios se han descartado porque su título no lleva «{getattr(b, 'palabras_titulo', '')}». "
+                "Si el acabado no es ese, corrígelo (o bórralo) en la pantalla de tasar."
+            )
         t.save()
         return t
     t.precio_mercado, t.rango_bajo, t.rango_alto = r["precio_mercado"], r["rango_bajo"], r["rango_alto"]

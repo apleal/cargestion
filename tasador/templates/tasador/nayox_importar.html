@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load tasador_extras %}
+{% block title %}Nayox · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>Nayox · importar ficha de inspección</h1>
+<p class="mono ayuda">Sube el PDF de Nayox: se leen la marca, el modelo, el acabado, los km, la matrícula, el estado y los avisos (reserva de dominio, neumáticos, ITV…), se crea el coche y pasas directamente a <b>tasarlo</b> con anuncios reales de coches.net. El PDF no trae precio: la puja máxima sale en cuanto hay un precio de venta.</p>
+
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:640px">
+  {% csrf_token %}
+  <p><label for="pdf">PDF de Nayox <span class="mono ayuda">(puedes elegir varios a la vez)</span></label>
+    <input type="file" id="pdf" name="pdf" accept="application/pdf,.pdf" multiple required></p>
+  <button class="primary" type="submit">Importar y tasar</button>
+</form>
+
+{% if recientes %}
+<div class="card">
+  <h2>Últimos de Nayox</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Coche</th><th>Expediente</th><th class="num">Km</th><th class="num">Venta</th><th class="num">Puja 15&nbsp;%</th><th></th></tr></thead>
+    <tbody>
+      {% for v in recientes %}
+      <tr>
+        <td><b>{{ v.vehiculo.marca }} {{ v.vehiculo.modelo }}</b> <span class="ver">{{ v.vehiculo.version }}</span></td>
+        <td class="mono">{{ v.lote_id }}</td>
+        <td class="num">{{ v.kilometros|miles }}</td>
+        <td class="num">{{ v.precio_venta_estimado|eur }}</td>
+        <td class="num">{{ v.r_puja_maxima_principal|eur }}</td>
+        <td class="acciones-fila">
+          <a class="btn mini-btn primary" href="{% url 'valoracion_tasar' v.pk %}">🧮 Tasar</a>
+          <a class="btn mini-btn" href="{% url 'valoracion_editar' v.pk %}">Costes</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="mono ayuda"><a href="{% url 'sesion_detalle' recientes.0.sesion_subasta_id %}">Ver todos en la rejilla</a></p>
+</div>
+{% endif %}
+{% endblock %}

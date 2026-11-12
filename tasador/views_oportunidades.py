@@ -372,3 +372,18 @@ def marcador_js(request):
     r["Cache-Control"] = "no-store"
     r["Access-Control-Allow-Origin"] = "*"
     return r
+
+
+@login_required
+@require_POST
+def valoracion_acabado(request, pk):
+    """Guarda el acabado que deben llevar los anuncios comparables de este coche (vacío = cualquiera)."""
+    v = get_object_or_404(models.Valoracion.objects.select_related("vehiculo"), pk=pk)
+    v.vehiculo.acabado = " ".join(request.POST.get("acabado", "").split())[:40]
+    v.vehiculo.save(update_fields=["acabado"])
+    messages.success(
+        request,
+        f"Acabado guardado: solo se usarán anuncios cuyo título lleve «{v.vehiculo.acabado}»."
+        if v.vehiculo.acabado else "Acabado quitado: se usarán anuncios de cualquier acabado.",
+    )
+    return redirect("valoracion_tasar", pk=v.pk)

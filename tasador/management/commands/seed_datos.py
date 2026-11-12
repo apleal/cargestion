@@ -206,4 +206,24 @@ class Command(BaseCommand):
             defaults={"importe": GESTION_AUTO1},
         )
 
+        # --- Nayox: compra directa a partir de la ficha de inspección en PDF ---
+        # Sin comisión ni gastos fijos de partida (se desconocen): el coste es el precio de compra.
+        # Se pueden ajustar en el administrador cuando se sepan.
+        nayox, _ = Proveedor.objects.update_or_create(
+            nombre="Nayox",
+            defaults={"activo": True, "notas": "Nayox: fichas de inspección en PDF (sin precio)."},
+        )
+        Ubicacion.objects.update_or_create(proveedor=nayox, nombre="Nayox", defaults={"provincia": ""})
+        TipoSubasta.objects.update_or_create(
+            proveedor=nayox,
+            nombre="Nayox",
+            defaults={
+                "modo": TipoSubasta.Modo.TABLA,
+                "usa_tabla_comision": False,
+                "cuota_plana": Decimal("0"),
+                "aplica_conceptos_fijos": False,
+                "es_predeterminado": True,
+            },
+        )
+
         self.stdout.write(self.style.SUCCESS("Datos iniciales cargados."))
