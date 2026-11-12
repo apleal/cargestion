@@ -908,6 +908,10 @@ class TasacionMercado(models.Model):
         max_length=1000, blank=True, help_text="La búsqueda de coches.net de la que salieron los anuncios."
     )
     nota = models.TextField(blank=True, help_text="Algo que conviene saber de cómo se ha calculado.")
+    acabado_objetivo = models.CharField(max_length=60, blank=True, help_text="El acabado del coche, según la IA.")
+    orden_acabados = models.JSONField(default=list, blank=True, help_text="Acabados del modelo de menor a mayor.")
+    detalle_acabados = models.JSONField(default=list, blank=True, help_text="Precio típico por acabado.")
+    metodo_acabado = models.TextField(blank=True, help_text="Cómo se ha estimado el precio de ese acabado.")
     ia_usada = models.BooleanField(default=False)
     ia_modelo = models.CharField(max_length=60, blank=True)
     ia_confianza = models.CharField(max_length=10, blank=True)

@@ -345,7 +345,7 @@ def test_solo_cuentan_los_anuncios_cuyo_titulo_lleva_el_acabado(datos):
 
     v, _ = services_nayox.importar_ficha(nayox.leer_ficha(PDF_FORMENTOR))  # acabado VZ
     anuncios = [_anuncio(i, f"CUPRA FORMENTOR 1.5 e-HYBRID VZ DSG {i}") for i in range(8)] + [
-        _anuncio(20 + i, "CUPRA FORMENTOR 1.4 e-HYBRID DSG") for i in range(4)  # sin acabado
+        _anuncio(20 + i, "CUPRA FORMENTOR 1.4 e-HYBRID DSG", km=60000 + i * 1000) for i in range(4)  # sin acabado
     ]
     t = tm.tasar(v, json.dumps({"anuncios": anuncios}), usar_ia=False)
     assert t.valida and t.n_usados == 8

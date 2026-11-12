@@ -30,6 +30,26 @@
 </div>
 {% endif %}
 
+{% if t.detalle_acabados %}
+<div class="card">
+  <h2>Precio según el acabado</h2>
+  <p class="mono ayuda">Escala de acabados de este modelo (de menor a mayor): {% for o in t.orden_acabados %}{{ o }}{% if not forloop.last %} &lt; {% endif %}{% endfor %}. Tu coche: <b>{{ t.acabado_objetivo }}</b>.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Acabado</th><th class="num">Anuncios</th><th class="num">Precio típico a tus km</th></tr></thead>
+    <tbody>
+      {% for d in t.detalle_acabados %}
+      <tr {% if d.tuyo %}class="fila-comprable"{% endif %}>
+        <td>{{ d.acabado }}{% if d.tuyo %} <span class="pill ok">tu coche</span>{% endif %}</td>
+        <td class="num">{{ d.n }}</td>
+        <td class="num">{{ d.precio|eur }}{% if d.estimado %} <span class="mono ayuda">(estimado)</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="mono ayuda">{{ t.metodo_acabado }}</p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Revisión con IA</h2>
   {% if t.ia_usada %}
@@ -46,10 +66,11 @@
 <div class="card">
   <h2>Anuncios usados ({{ t.anuncios|length }})</h2>
   <div class="tw"><table>
-    <thead><tr><th>Anuncio</th><th class="num">Precio</th><th class="num">Año</th><th class="num">Km</th><th class="num">CV</th><th>Prov.</th></tr></thead>
+    <thead><tr><th>Anuncio</th>{% if t.detalle_acabados %}<th>Acabado</th>{% endif %}<th class="num">Precio</th><th class="num">Año</th><th class="num">Km</th><th class="num">CV</th><th>Prov.</th></tr></thead>
     <tbody>
       {% for a in t.anuncios %}
       <tr><td>{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.titulo }}</a>{% else %}{{ a.titulo }}{% endif %}</td>
+        {% if t.detalle_acabados %}<td>{{ a.acabado|default:"—" }}</td>{% endif %}
         <td class="num">{{ a.precio|eur }}</td><td class="num">{{ a.anio|default_if_none:"—" }}</td>
         <td class="num">{{ a.km|miles }}</td><td class="num">{{ a.cv|default_if_none:"—" }}</td><td>{{ a.provincia }}</td></tr>
       {% endfor %}
