@@ -700,3 +700,17 @@ def test_las_pantallas_enseñan_el_marcador_principal_y_el_cargador(web2, coche)
     assert 'id="marcador-cargador"' in html and "/tasar/marcador.js" in html
     assert "cajita azul" in html and "bórralo e instala este" in html
     assert "marcador-completo" not in html
+
+
+def test_el_boton_tasar_va_en_su_propia_linea_y_no_tapa_la_carroceria(web2, coche):
+    """Antes el botón iba pegado al campo de venta (al 100 % de ancho) y, sin poder partirse la línea,
+    se salía de la celda y tapaba el desplegable de carrocería de la columna de al lado."""
+    from pathlib import Path
+
+    html = web2.get(reverse("sesion_detalle", args=[coche.sesion_subasta_id])).content.decode()
+    celda = html[html.index('<td class="num venta-cell">'):]
+    celda = celda[: celda.index("</td>")]
+    assert '<div class="tasar-fila">' in celda and "tasar-chip" in celda
+    assert celda.index("tasar-fila") > celda.index('class="celda venta"')  # debajo del campo, no a su lado
+    css = (Path(models.__file__).parent / "static/tasador/app.css").read_text(encoding="utf-8")
+    assert "td.venta-cell{white-space:normal}" in css and ".tasar-fila{display:flex" in css

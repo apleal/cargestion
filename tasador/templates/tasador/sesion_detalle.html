@@ -138,8 +138,10 @@
           <td class="num venta-cell">
             <input class="celda venta" data-campo="precio_venta_estimado" data-val="{{ v.pk }}"
                    value="{{ v.precio_venta_estimado|floatformat:0 }}" inputmode="numeric">
-            <a class="chip chip-ok tasar-chip" href="{% url 'valoracion_tasar' v.pk %}"
-               title="Calcular a cuánto venderlo con anuncios reales de coches.net">🧮 Tasar</a>
+            <div class="tasar-fila">
+              <a class="chip chip-ok tasar-chip" href="{% url 'valoracion_tasar' v.pk %}"
+                 title="Calcular a cuánto venderlo con anuncios reales de coches.net">🧮 Tasar</a>
+            </div>
             <div class="enlaces-coche" data-pk="{{ v.pk }}" data-url="{{ v.vehiculo.url_cochesnet }}"
                  data-buscar="{{ v.vehiculo|buscar_comparables_url }}">
               {% if v.vehiculo.url_cochesnet %}

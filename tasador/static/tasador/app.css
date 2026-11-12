@@ -171,6 +171,10 @@ table.rejilla input.mini{min-width:52px;text-align:right}
 table.rejilla input.venta{text-align:right;font-weight:600}
 table.rejilla td.venta-cell{vertical-align:top;min-width:112px}
 table.rejilla td.venta-cell input.celda{width:100%}
+/* el botón Tasar va en su propia línea dentro de la celda: nunca se sale ni tapa la columna de al lado */
+table.rejilla td.venta-cell{white-space:normal}
+.tasar-fila{display:flex;justify-content:flex-end;margin-top:3px}
+.tasar-fila .chip{max-width:100%;white-space:nowrap}
 .enlaces-coche{display:flex;justify-content:flex-end;gap:4px;margin-top:3px;flex-wrap:wrap}
 .chip{display:inline-block;font:inherit;font-size:.7rem;line-height:1.5;padding:0 8px;border:1px solid var(--line-strong);
   border-radius:999px;background:var(--surface);color:var(--ink-soft);text-decoration:none;cursor:pointer;white-space:nowrap}
